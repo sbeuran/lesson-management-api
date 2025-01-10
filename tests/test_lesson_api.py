@@ -3,6 +3,10 @@ from fastapi.testclient import TestClient
 from datetime import datetime
 from src.api.routes import app
 from src.models.lesson import LessonCompletion
+import os
+
+# Ensure we're in testing mode
+os.environ['TESTING'] = 'true'
 
 client = TestClient(app)
 
