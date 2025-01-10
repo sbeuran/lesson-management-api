@@ -4,5 +4,6 @@ boto3
 mangum
 pytest
 pytest-cov
-moto
-python-dateutil 
+moto[dynamodb]>=4.2.0
+python-dateutil
+httpx 

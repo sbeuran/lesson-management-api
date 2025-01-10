@@ -5,7 +5,7 @@ from src.api.routes import app
 from src.models.lesson import CompletionStatus
 import boto3
 import os
-from moto import mock_dynamodb
+from moto.dynamodb2 import mock_dynamodb2
 
 # Set testing environment
 os.environ['TESTING'] = 'true'
@@ -24,7 +24,7 @@ def aws_credentials():
 @pytest.fixture
 def dynamodb(aws_credentials):
     """Create a mock DynamoDB."""
-    with mock_dynamodb():
+    with mock_dynamodb2():
         # Create the DynamoDB table
         dynamodb = boto3.resource('dynamodb',
             aws_access_key_id='testing',
