@@ -300,44 +300,98 @@ jobs:
           }
         done
 
-        # Create /{student_id} resource and methods
-        student_completion_resource_id=$(aws apigateway create-resource \
+        # Check if student_id resource exists
+        student_completion_resource_id=$(aws apigateway get-resources \
           --rest-api-id "${api_id}" \
-          --parent-id "${completion_resource_id}" \
-          --path-part "{student_id}" \
-          --query 'id' \
-          --output text)
+          --query "items[?path=='/lessons/completion/{student_id}'].id" \
+          --output text) || true
 
-        # Set up methods for /{student_id}
+        if [ -z "$student_completion_resource_id" ]; then
+          echo "Creating student_id resource..."
+          student_completion_resource_id=$(aws apigateway create-resource \
+            --rest-api-id "${api_id}" \
+            --parent-id "${completion_resource_id}" \
+            --path-part "{student_id}" \
+            --query 'id' \
+            --output text)
+        else
+          echo "Student_id resource already exists"
+        fi
+
+        # Set up methods for student_id endpoint
         for method in GET OPTIONS; do
-          aws apigateway put-method \
+          # Check if method exists
+          aws apigateway get-method \
             --rest-api-id "${api_id}" \
             --resource-id "${student_completion_resource_id}" \
-            --http-method "${method}" \
-            --authorization-type NONE \
-            $([ "${method}" = "OPTIONS" ] && echo "--no-api-key-required" || echo "--api-key-required") \
-            $([ "${method}" = "GET" ] && echo "--request-parameters method.request.path.student_id=true" || echo "")
+            --http-method "${method}" 2>/dev/null || {
+            
+            if [ "${method}" = "OPTIONS" ]; then
+              # OPTIONS method setup
+              aws apigateway put-method \
+                --rest-api-id "${api_id}" \
+                --resource-id "${student_completion_resource_id}" \
+                --http-method OPTIONS \
+                --authorization-type NONE \
+                --no-api-key-required
 
-          if [ "${method}" = "OPTIONS" ]; then
-            # OPTIONS setup (same as above)
-            aws apigateway put-integration \
-              --rest-api-id "${api_id}" \
-              --resource-id "${student_completion_resource_id}" \
-              --http-method OPTIONS \
-              --type MOCK \
-              --request-templates '{"application/json":"{\"statusCode\": 200}"}'
+              aws apigateway put-integration \
+                --rest-api-id "${api_id}" \
+                --resource-id "${student_completion_resource_id}" \
+                --http-method OPTIONS \
+                --type MOCK \
+                --request-templates '{"application/json":"{\"statusCode\": 200}"}'
 
-            # ... (rest of OPTIONS setup)
-          else
-            aws apigateway put-integration \
-              --rest-api-id "${api_id}" \
-              --resource-id "${student_completion_resource_id}" \
-              --http-method "${method}" \
-              --type AWS_PROXY \
-              --integration-http-method POST \
-              --uri "arn:aws:apigateway:${AWS_DEFAULT_REGION}:lambda:path/2015-03-31/functions/arn:aws:lambda:${AWS_DEFAULT_REGION}:${AWS_ACCOUNT_ID}:function:${function_name}/invocations"
-          fi
+              aws apigateway put-method-response \
+                --rest-api-id "${api_id}" \
+                --resource-id "${student_completion_resource_id}" \
+                --http-method OPTIONS \
+                --status-code 200 \
+                --response-parameters "{
+                  \"method.response.header.Access-Control-Allow-Headers\":true,
+                  \"method.response.header.Access-Control-Allow-Methods\":true,
+                  \"method.response.header.Access-Control-Allow-Origin\":true
+                }"
+
+              aws apigateway put-integration-response \
+                --rest-api-id "${api_id}" \
+                --resource-id "${student_completion_resource_id}" \
+                --http-method OPTIONS \
+                --status-code 200 \
+                --response-parameters '{
+                  "method.response.header.Access-Control-Allow-Headers": "'\''Content-Type,X-Api-Key,Authorization'\''",
+                  "method.response.header.Access-Control-Allow-Methods": "'\''GET,OPTIONS'\''",
+                  "method.response.header.Access-Control-Allow-Origin": "'\''*'\''"
+                }'
+            else
+              # GET method setup
+              aws apigateway put-method \
+                --rest-api-id "${api_id}" \
+                --resource-id "${student_completion_resource_id}" \
+                --http-method GET \
+                --authorization-type NONE \
+                --api-key-required \
+                --request-parameters "method.request.path.student_id=true"
+
+              aws apigateway put-integration \
+                --rest-api-id "${api_id}" \
+                --resource-id "${student_completion_resource_id}" \
+                --http-method GET \
+                --type AWS_PROXY \
+                --integration-http-method POST \
+                --uri "arn:aws:apigateway:${AWS_DEFAULT_REGION}:lambda:path/2015-03-31/functions/arn:aws:lambda:${AWS_DEFAULT_REGION}:${AWS_ACCOUNT_ID}:function:${function_name}/invocations" \
+                --request-parameters "integration.request.path.student_id=method.request.path.student_id"
+            fi
+          }
         done
+
+        # Add Lambda permission for student_id endpoint
+        aws lambda add-permission \
+          --function-name $function_name \
+          --statement-id apigateway-student \
+          --action lambda:InvokeFunction \
+          --principal apigateway.amazonaws.com \
+          --source-arn "arn:aws:execute-api:${AWS_DEFAULT_REGION}:${AWS_ACCOUNT_ID}:${api_id}/*/GET/lessons/completion/*" || true
 
         # Create deployment
         aws apigateway create-deployment \
