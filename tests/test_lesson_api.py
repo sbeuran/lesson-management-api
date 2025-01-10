@@ -5,6 +5,7 @@ from src.api.routes import app
 from src.models.lesson import LessonCompletion
 import os
 import boto3
+from moto import mock_dynamodb, mock_cloudwatch
 
 # Ensure we're in testing mode
 os.environ['TESTING'] = 'true'
@@ -15,47 +16,31 @@ os.environ['AWS_DEFAULT_REGION'] = 'eu-west-1'
 client = TestClient(app)
 
 @pytest.fixture(autouse=True)
-def mock_dynamodb(monkeypatch):
-    """Mock DynamoDB interactions for testing"""
-    class MockTable:
-        def __init__(self):
-            self.items = {}
-        
-        def put_item(self, Item):
-            student_id = Item['student_id']
-            self.items[student_id] = {**Item}
-            return {}
-            
-        def query(self, KeyConditionExpression, ExpressionAttributeValues):
-            student_id = ExpressionAttributeValues[':sid']
-            items = [self.items[student_id]] if student_id in self.items else []
-            return {"Items": items}
+@mock_dynamodb
+@mock_cloudwatch
+def mock_aws():
+    """Set up mock AWS services"""
+    # Create DynamoDB table
+    dynamodb = boto3.resource('dynamodb', region_name='eu-west-1')
     
-    class MockDynamoDB:
-        def __init__(self):
-            self.table = MockTable()
-            
-        def Table(self, name):
-            return self.table
-        
-        def client(self, service_name, region_name=None):
-            return self
-            
-        def put_metric_data(self, *args, **kwargs):
-            return {}
+    # Create the table
+    table = dynamodb.create_table(
+        TableName='lesson_completions',
+        KeySchema=[
+            {'AttributeName': 'student_id', 'KeyType': 'HASH'},
+            {'AttributeName': 'id', 'KeyType': 'RANGE'}
+        ],
+        AttributeDefinitions=[
+            {'AttributeName': 'student_id', 'AttributeType': 'S'},
+            {'AttributeName': 'id', 'AttributeType': 'S'}
+        ],
+        ProvisionedThroughput={
+            'ReadCapacityUnits': 5,
+            'WriteCapacityUnits': 5
+        }
+    )
     
-    mock_db = MockDynamoDB()
-    
-    def mock_resource(*args, **kwargs):
-        return mock_db
-    
-    def mock_client(*args, **kwargs):
-        return mock_db
-    
-    monkeypatch.setattr(boto3, "resource", mock_resource)
-    monkeypatch.setattr(boto3, "client", mock_client)
-    
-    return mock_db
+    return table
 
 def test_record_completion():
     completion_data = {
