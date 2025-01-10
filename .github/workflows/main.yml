@@ -160,182 +160,125 @@ jobs:
         existing_api_id=$(aws apigateway get-rest-apis --query "items[?name=='${api_name}'].id" --output text) || true
         
         if [ -z "$existing_api_id" ]; then
-          # Create new API
+          # Create new API with CORS enabled
           api_id=$(aws apigateway create-rest-api \
             --name "${api_name}" \
+            --endpoint-configuration types=REGIONAL \
             --query 'id' \
             --output text)
-          
-          # Get root resource ID
-          root_resource_id=$(aws apigateway get-resources \
-            --rest-api-id "${api_id}" \
-            --query 'items[?path==`/`].id' \
-            --output text)
-          
-          # Create resource for /health
-          health_resource_id=$(aws apigateway create-resource \
-            --rest-api-id "${api_id}" \
-            --parent-id "${root_resource_id}" \
-            --path-part "health" \
-            --query 'id' \
-            --output text)
-          
-          # Create resource for /lessons
+        else
+          api_id="${existing_api_id}"
+        fi
+        
+        # Get root resource ID
+        root_resource_id=$(aws apigateway get-resources \
+          --rest-api-id "${api_id}" \
+          --query 'items[?path==`/`].id' \
+          --output text)
+        
+        # Create /lessons resource if it doesn't exist
+        lessons_resource_id=$(aws apigateway get-resources \
+          --rest-api-id "${api_id}" \
+          --query "items[?path=='/lessons'].id" \
+          --output text) || true
+        
+        if [ -z "$lessons_resource_id" ]; then
           lessons_resource_id=$(aws apigateway create-resource \
             --rest-api-id "${api_id}" \
             --parent-id "${root_resource_id}" \
             --path-part "lessons" \
             --query 'id' \
             --output text)
-          
-          # Create resource for /lessons/completion
+        fi
+        
+        # Create /lessons/completion resource if it doesn't exist
+        completion_resource_id=$(aws apigateway get-resources \
+          --rest-api-id "${api_id}" \
+          --query "items[?path=='/lessons/completion'].id" \
+          --output text) || true
+        
+        if [ -z "$completion_resource_id" ]; then
           completion_resource_id=$(aws apigateway create-resource \
             --rest-api-id "${api_id}" \
             --parent-id "${lessons_resource_id}" \
             --path-part "completion" \
             --query 'id' \
             --output text)
-          
-          # Create resource for /lessons/completion/{student_id}
-          student_completion_resource_id=$(aws apigateway create-resource \
+        fi
+        
+        # Set up methods for /lessons/completion
+        for method in GET POST OPTIONS; do
+          # Check if method exists
+          aws apigateway get-method \
             --rest-api-id "${api_id}" \
-            --parent-id "${completion_resource_id}" \
-            --path-part "{student_id}" \
-            --query 'id' \
-            --output text)
-          
-          # Create all methods
-          for endpoint in "${health_resource_id}:GET" "${health_resource_id}:OPTIONS" "${completion_resource_id}:POST" "${completion_resource_id}:GET" "${completion_resource_id}:OPTIONS" "${student_completion_resource_id}:GET" "${student_completion_resource_id}:OPTIONS"; do
-            resource_id="${endpoint%:*}"
-            method="${endpoint#*:}"
+            --resource-id "${completion_resource_id}" \
+            --http-method "${method}" 2>/dev/null || {
             
-            # Create method
+            # Create method if it doesn't exist
             if [ "${method}" = "OPTIONS" ]; then
-              # Special handling for OPTIONS method
+              # OPTIONS method setup
               aws apigateway put-method \
                 --rest-api-id "${api_id}" \
-                --resource-id "${resource_id}" \
+                --resource-id "${completion_resource_id}" \
                 --http-method OPTIONS \
-                --authorization-type NONE
+                --authorization-type NONE \
+                --no-api-key-required
 
-              # Add OPTIONS method response
-              aws apigateway put-method-response \
-                --rest-api-id "${api_id}" \
-                --resource-id "${resource_id}" \
-                --http-method OPTIONS \
-                --status-code 200 \
-                --response-parameters "method.response.header.Access-Control-Allow-Headers=true,method.response.header.Access-Control-Allow-Methods=true,method.response.header.Access-Control-Allow-Origin=true"
-
-              # Add OPTIONS integration
               aws apigateway put-integration \
                 --rest-api-id "${api_id}" \
-                --resource-id "${resource_id}" \
+                --resource-id "${completion_resource_id}" \
                 --http-method OPTIONS \
                 --type MOCK \
                 --request-templates '{"application/json":"{\"statusCode\": 200}"}'
 
-              # Add OPTIONS integration response
-              aws apigateway put-integration-response \
+              aws apigateway put-method-response \
                 --rest-api-id "${api_id}" \
-                --resource-id "${resource_id}" \
+                --resource-id "${completion_resource_id}" \
                 --http-method OPTIONS \
                 --status-code 200 \
                 --response-parameters "{
-                  \"method.response.header.Access-Control-Allow-Headers\": \"'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'\",
-                  \"method.response.header.Access-Control-Allow-Methods\": \"'GET,POST,OPTIONS'\",
-                  \"method.response.header.Access-Control-Allow-Origin\": \"'*'\"
+                  \"method.response.header.Access-Control-Allow-Headers\":true,
+                  \"method.response.header.Access-Control-Allow-Methods\":true,
+                  \"method.response.header.Access-Control-Allow-Origin\":true
+                }"
+
+              aws apigateway put-integration-response \
+                --rest-api-id "${api_id}" \
+                --resource-id "${completion_resource_id}" \
+                --http-method OPTIONS \
+                --status-code 200 \
+                --response-parameters "{
+                  \"method.response.header.Access-Control-Allow-Headers\":\"'Content-Type,X-Api-Key,Authorization'\"
+                  \"method.response.header.Access-Control-Allow-Methods\":\"'GET,POST,OPTIONS'\"
+                  \"method.response.header.Access-Control-Allow-Origin\":\"'*'\"
                 }"
             else
-              # Regular method setup (existing code)
+              # Regular method setup
               aws apigateway put-method \
                 --rest-api-id "${api_id}" \
-                --resource-id "${resource_id}" \
+                --resource-id "${completion_resource_id}" \
                 --http-method "${method}" \
                 --authorization-type NONE \
-                $([ "${resource_id}" = "${student_completion_resource_id}" ] && echo '--request-parameters "method.request.path.student_id=true"' || echo '')
-              
-              # Set up Lambda integration
+                --api-key-required
+
               aws apigateway put-integration \
                 --rest-api-id "${api_id}" \
-                --resource-id "${resource_id}" \
+                --resource-id "${completion_resource_id}" \
                 --http-method "${method}" \
                 --type AWS_PROXY \
                 --integration-http-method POST \
                 --uri "arn:aws:apigateway:${AWS_DEFAULT_REGION}:lambda:path/2015-03-31/functions/arn:aws:lambda:${AWS_DEFAULT_REGION}:${AWS_ACCOUNT_ID}:function:${function_name}/invocations"
             fi
-          done
-          
-          # Add Lambda permission for API Gateway
-          aws lambda add-permission \
-            --function-name "${function_name}" \
-            --statement-id "AllowAPIGatewayInvoke" \
-            --action "lambda:InvokeFunction" \
-            --principal "apigateway.amazonaws.com" \
-            --source-arn "arn:aws:execute-api:${AWS_DEFAULT_REGION}:${AWS_ACCOUNT_ID}:${api_id}/*/*"
-          
-          # Deploy the API
-          aws apigateway create-deployment \
-            --rest-api-id "${api_id}" \
-            --stage-name "prod"
-
-          # ALWAYS create/update API key and usage plan
-          echo "Creating/updating API key..."
-          api_key_response=$(aws apigateway create-api-key \
-            --name "lesson-completion-api-key" \
-            --enabled \
-            --generate-distinct-id \
-            --description "API key for lesson completion API" \
-            --tags Key=Environment,Value=prod)
-          
-          api_key_id=$(echo "$api_key_response" | jq -r '.id')
-          api_key_value=$(echo "$api_key_response" | jq -r '.value')
-          
-          echo "Creating/updating usage plan..."
-          usage_plan_response=$(aws apigateway create-usage-plan \
-            --name "lesson-completion-api-plan" \
-            --description "Usage plan for lesson completion API" \
-            --api-stages "[{\"apiId\": \"${api_id}\", \"stage\": \"prod\"}]" \
-            --throttle '{"rateLimit": 10, "burstLimit": 5}' \
-            --quota '{"limit": 1000, "period": "MONTH"}')
-          
-          usage_plan_id=$(echo "$usage_plan_response" | jq -r '.id')
-          
-          echo "Associating API key with usage plan..."
-          aws apigateway create-usage-plan-key \
-            --usage-plan-id "${usage_plan_id}" \
-            --key-id "${api_key_id}" \
-            --key-type "API_KEY" || true
-
-          # Update all methods to require API key
-          echo "Updating methods to require API key..."
-          resources=$(aws apigateway get-resources --rest-api-id "${api_id}" --query 'items[*].[id]' --output text)
-          for resource_id in $resources; do
-            methods=$(aws apigateway get-resource --rest-api-id "${api_id}" --resource-id "${resource_id}" --query 'resourceMethods' --output text)
-            for method in $methods; do
-              if [ "$method" != "OPTIONS" ]; then
-                aws apigateway update-method \
-                  --rest-api-id "${api_id}" \
-                  --resource-id "${resource_id}" \
-                  --http-method "${method}" \
-                  --patch-operations op=replace,path=/apiKeyRequired,value=true || true
-              fi
-            done
-          done
-
-          # Create new deployment to apply changes
-          echo "Creating new deployment..."
-          aws apigateway create-deployment \
-            --rest-api-id "${api_id}" \
-            --stage-name "prod" \
-            --description "Deployment with API key requirement"
-
-          # Output results
-          echo "Setup complete!"
-          echo "API Base URL: https://${api_id}.execute-api.${AWS_DEFAULT_REGION}.amazonaws.com/prod"
-          echo "API Key: ${api_key_value}"
-        else
-          api_id="${existing_api_id}"
-        fi
+          }
+        done
+        
+        # Create deployment
+        aws apigateway create-deployment \
+          --rest-api-id "${api_id}" \
+          --stage-name "prod"
+        
+        # Output the API URL
+        echo "API URL: https://${api_id}.execute-api.${AWS_DEFAULT_REGION}.amazonaws.com/prod"
 
         # ALWAYS create/update API key and usage plan
         echo "Creating/updating API key..."
