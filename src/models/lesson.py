@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field
+from enum import Enum
 from datetime import datetime
 from typing import Optional
-from enum import Enum
 from decimal import Decimal
 
 class CompletionStatus(str, Enum):
@@ -10,22 +10,25 @@ class CompletionStatus(str, Enum):
     FAILED = "failed"
 
 class LessonCompletion(BaseModel):
-    student_id: str = Field(..., min_length=1)
-    lesson_id: str = Field(..., min_length=1)
-    completion_date: datetime
-    score: Decimal = Field(..., ge=0, le=100)
-    duration_minutes: int = Field(..., gt=0)
-    status: CompletionStatus
+    student_id: str = Field(..., description="Student's unique identifier")
+    lesson_id: str = Field(..., description="Lesson's unique identifier")
+    completion_date: datetime = Field(default_factory=datetime.now)
+    score: Decimal = Field(..., description="Lesson score")
+    duration_minutes: int = Field(..., description="Duration in minutes")
+    status: CompletionStatus = Field(..., description="Completion status")
 
     class Config:
         json_encoders = {
             datetime: lambda v: v.isoformat(),
-            Decimal: lambda v: str(v)
+            Decimal: str
         }
-
-    def model_dump(self):
-        data = super().model_dump()
-        # Convert float to Decimal for DynamoDB
-        if isinstance(data.get('score'), float):
-            data['score'] = Decimal(str(data['score']))
+        
+    def model_dump(self, **kwargs):
+        data = super().model_dump(**kwargs)
+        # Convert datetime to string
+        if isinstance(data['completion_date'], datetime):
+            data['completion_date'] = data['completion_date'].isoformat()
+        # Convert Decimal to string
+        if isinstance(data['score'], Decimal):
+            data['score'] = str(data['score'])
         return data 

@@ -7,14 +7,30 @@ import logging
 import json
 from datetime import datetime
 import uuid
+import os
 
 # Set up logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 app = FastAPI()
-dynamodb = boto3.resource('dynamodb')
+
+# Configure DynamoDB based on environment
+if os.getenv('TESTING') == 'true':
+    dynamodb = boto3.resource(
+        'dynamodb',
+        region_name='eu-west-1',
+        aws_access_key_id='testing',
+        aws_secret_access_key='testing'
+    )
+else:
+    dynamodb = boto3.resource('dynamodb')
+
 table = dynamodb.Table('lesson_completions')
+
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy"}
 
 @app.get("/lessons/completion")
 async def list_completions() -> List[dict]:
@@ -52,7 +68,8 @@ async def get_student_completions(student_id: str) -> List[dict]:
 @app.post("/lessons/completion")
 async def create_completion(completion: LessonCompletion) -> dict:
     try:
-        item = completion.dict()
+        # Use model_dump() instead of dict() for Pydantic v2
+        item = completion.model_dump()
         item['id'] = str(uuid.uuid4())
         
         logger.info(f"Creating completion: {json.dumps(item)}")
