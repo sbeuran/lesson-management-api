@@ -28,7 +28,9 @@ def format_response(status_code: int, body: dict):
         "body": json.dumps(body, cls=DecimalEncoder),
         "headers": {
             "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*"
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type,X-Api-Key"
         }
     }
 
@@ -38,14 +40,7 @@ def lambda_handler(event, context):
 
         # Handle CORS preflight
         if event.get("httpMethod") == "OPTIONS":
-            return {
-                "statusCode": 200,
-                "headers": {
-                    "Access-Control-Allow-Origin": "*",
-                    "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-                    "Access-Control-Allow-Headers": "Content-Type,X-Api-Key"
-                }
-            }
+            return format_response(200, {"message": "OK"})
 
         # Add API Gateway context
         if 'requestContext' not in event:
@@ -53,9 +48,9 @@ def lambda_handler(event, context):
         if 'path' not in event:
             event['path'] = event.get('resource', '')
 
-        # Add path parameters if they exist
+        # Fix path parameters
         if 'pathParameters' in event and event['pathParameters']:
-            event['path'] = event['path'].format(**event['pathParameters'])
+            event['path'] = event.get('resource', '').replace('{student_id}', event['pathParameters']['student_id'])
 
         # Process request
         try:
@@ -77,7 +72,9 @@ def lambda_handler(event, context):
                 "body": response.body.decode(),
                 "headers": {
                     "Content-Type": "application/json",
-                    "Access-Control-Allow-Origin": "*"
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+                    "Access-Control-Allow-Headers": "Content-Type,X-Api-Key"
                 }
             }
         else:

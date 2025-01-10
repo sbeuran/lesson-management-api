@@ -19,6 +19,7 @@ app = FastAPI()
 if os.getenv('TESTING') == 'true':
     dynamodb = boto3.resource(
         'dynamodb',
+        endpoint_url='http://localhost:8000',
         region_name='eu-west-1',
         aws_access_key_id='testing',
         aws_secret_access_key='testing'
@@ -30,7 +31,13 @@ table = dynamodb.Table('lesson_completions')
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy"}
+    try:
+        # Test DynamoDB connection
+        table.scan(Limit=1)
+        return {"status": "healthy", "message": "API and database are operational"}
+    except Exception as e:
+        logger.error(f"Health check failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Health check failed")
 
 @app.get("/lessons/completion")
 async def list_completions() -> List[dict]:
@@ -68,7 +75,6 @@ async def get_student_completions(student_id: str) -> List[dict]:
 @app.post("/lessons/completion")
 async def create_completion(completion: LessonCompletion) -> dict:
     try:
-        # Use model_dump() instead of dict() for Pydantic v2
         item = completion.model_dump()
         item['id'] = str(uuid.uuid4())
         

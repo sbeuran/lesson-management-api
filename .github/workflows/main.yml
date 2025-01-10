@@ -479,9 +479,38 @@ jobs:
           --function-name $function_name \
           --statement-id apigateway || true
 
+        # Update method responses and integrations
+        for method in GET POST; do
+          aws apigateway put-method-response \
+            --rest-api-id "${api_id}" \
+            --resource-id "${completion_resource_id}" \
+            --http-method "${method}" \
+            --status-code 200 \
+            --response-models '{"application/json": "Empty"}' \
+            --response-parameters "{
+              \"method.response.header.Access-Control-Allow-Origin\": true,
+              \"method.response.header.Access-Control-Allow-Methods\": true,
+              \"method.response.header.Access-Control-Allow-Headers\": true
+            }" || true
+
+          aws apigateway put-integration-response \
+            --rest-api-id "${api_id}" \
+            --resource-id "${completion_resource_id}" \
+            --http-method "${method}" \
+            --status-code 200 \
+            --selection-pattern "" \
+            --response-parameters "{
+              \"method.response.header.Access-Control-Allow-Origin\": \"'*'\",
+              \"method.response.header.Access-Control-Allow-Methods\": \"'GET,POST,OPTIONS'\",
+              \"method.response.header.Access-Control-Allow-Headers\": \"'Content-Type,X-Api-Key'\"
+            }" || true
+        done
+
+        # Update Lambda permissions with timestamp
+        timestamp=$(date +%s)
         aws lambda add-permission \
           --function-name $function_name \
-          --statement-id apigateway \
+          --statement-id "apigateway-${timestamp}" \
           --action lambda:InvokeFunction \
           --principal apigateway.amazonaws.com \
           --source-arn "arn:aws:execute-api:${AWS_DEFAULT_REGION}:${AWS_ACCOUNT_ID}:${api_id}/*/*/*"
