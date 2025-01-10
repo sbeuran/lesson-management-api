@@ -151,6 +151,14 @@ jobs:
             --query 'items[?path==`/`].id' \
             --output text)
           
+          # Create resource for /health
+          health_resource_id=$(aws apigateway create-resource \
+            --rest-api-id "${api_id}" \
+            --parent-id "${root_resource_id}" \
+            --path-part "health" \
+            --query 'id' \
+            --output text)
+          
           # Create resource for /lessons
           lessons_resource_id=$(aws apigateway create-resource \
             --rest-api-id "${api_id}" \
@@ -175,14 +183,14 @@ jobs:
             --query 'id' \
             --output text)
           
-          # Create POST method
+          # Create POST method for completion
           aws apigateway put-method \
             --rest-api-id "${api_id}" \
             --resource-id "${completion_resource_id}" \
             --http-method POST \
             --authorization-type NONE
           
-          # Create GET method
+          # Create GET method for completion list
           aws apigateway put-method \
             --rest-api-id "${api_id}" \
             --resource-id "${completion_resource_id}" \
@@ -197,6 +205,13 @@ jobs:
             --authorization-type NONE \
             --request-parameters "method.request.path.student_id=true"
           
+          # Create GET method for health check
+          aws apigateway put-method \
+            --rest-api-id "${api_id}" \
+            --resource-id "${health_resource_id}" \
+            --http-method GET \
+            --authorization-type NONE
+          
           # Set up Lambda integration for POST
           aws apigateway put-integration \
             --rest-api-id "${api_id}" \
@@ -206,7 +221,7 @@ jobs:
             --integration-http-method POST \
             --uri "arn:aws:apigateway:${AWS_DEFAULT_REGION}:lambda:path/2015-03-31/functions/arn:aws:lambda:${AWS_DEFAULT_REGION}:${AWS_ACCOUNT_ID}:function:${function_name}/invocations"
           
-          # Set up Lambda integration for GET
+          # Set up Lambda integration for GET completion list
           aws apigateway put-integration \
             --rest-api-id "${api_id}" \
             --resource-id "${completion_resource_id}" \
@@ -219,6 +234,15 @@ jobs:
           aws apigateway put-integration \
             --rest-api-id "${api_id}" \
             --resource-id "${student_completion_resource_id}" \
+            --http-method GET \
+            --type AWS_PROXY \
+            --integration-http-method POST \
+            --uri "arn:aws:apigateway:${AWS_DEFAULT_REGION}:lambda:path/2015-03-31/functions/arn:aws:lambda:${AWS_DEFAULT_REGION}:${AWS_ACCOUNT_ID}:function:${function_name}/invocations"
+          
+          # Set up Lambda integration for health check
+          aws apigateway put-integration \
+            --rest-api-id "${api_id}" \
+            --resource-id "${health_resource_id}" \
             --http-method GET \
             --type AWS_PROXY \
             --integration-http-method POST \
@@ -237,15 +261,17 @@ jobs:
             --rest-api-id "${api_id}" \
             --stage-name "prod"
           
-          # Output the API URL
-          echo "API URL: https://${api_id}.execute-api.${AWS_DEFAULT_REGION}.amazonaws.com/prod/lessons/completion"
+          # Output the API URLs
+          echo "API Base URL: https://${api_id}.execute-api.${AWS_DEFAULT_REGION}.amazonaws.com/prod"
+          echo "Health Check: https://${api_id}.execute-api.${AWS_DEFAULT_REGION}.amazonaws.com/prod/health"
+          echo "Lesson Completion: https://${api_id}.execute-api.${AWS_DEFAULT_REGION}.amazonaws.com/prod/lessons/completion"
         else
           # Deploy updates to existing API
           aws apigateway create-deployment \
             --rest-api-id "${existing_api_id}" \
             --stage-name "prod"
           
-          echo "API URL: https://${existing_api_id}.execute-api.${AWS_DEFAULT_REGION}.amazonaws.com/prod/lessons/completion"
+          echo "API Base URL: https://${existing_api_id}.execute-api.${AWS_DEFAULT_REGION}.amazonaws.com/prod"
         fi 
 
         # Create resource for /health
