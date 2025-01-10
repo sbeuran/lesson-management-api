@@ -42,45 +42,33 @@ def lambda_handler(event, context):
         if event.get("httpMethod") == "OPTIONS":
             return format_response(200, {"message": "OK"})
 
-        # Add API Gateway context
-        if 'requestContext' not in event:
-            event['requestContext'] = {}
-        if 'path' not in event:
-            event['path'] = event.get('resource', '')
+        # Add path parameters to event if they exist
+        if event.get('pathParameters'):
+            path = event.get('path', '')
+            for key, value in event['pathParameters'].items():
+                path = path.replace(f"{{{key}}}", value)
+            event['path'] = path
 
-        # Fix path parameters
-        if 'pathParameters' in event and event['pathParameters']:
-            event['path'] = event.get('resource', '').replace('{student_id}', event['pathParameters']['student_id'])
-
-        # Process request
+        # Process request through Mangum
         try:
             response = handler(event, context)
-            logger.info(f"Raw handler response: {json.dumps(response)}")
+            logger.info(f"Handler response: {json.dumps(response)}")
         except Exception as e:
             logger.error(f"Handler error: {str(e)}")
             logger.error(traceback.format_exc())
-            return format_response(500, {"error": f"Handler error: {str(e)}"})
+            return format_response(500, {"error": str(e)})
 
-        # Handle FastAPI Response objects
+        # Format response
         if isinstance(response, dict):
             if "statusCode" not in response:
                 return format_response(200, response)
             return response
-        elif isinstance(response, JSONResponse):
-            return {
-                "statusCode": response.status_code,
-                "body": response.body.decode(),
-                "headers": {
-                    "Content-Type": "application/json",
-                    "Access-Control-Allow-Origin": "*",
-                    "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-                    "Access-Control-Allow-Headers": "Content-Type,X-Api-Key"
-                }
-            }
+        elif isinstance(response, list):
+            return format_response(200, {"items": response})
         else:
             return format_response(200, {"data": str(response)})
 
     except Exception as e:
-        logger.error(f"Error: {str(e)}")
+        logger.error(f"Lambda error: {str(e)}")
         logger.error(traceback.format_exc())
         return format_response(500, {"error": str(e)}) 
