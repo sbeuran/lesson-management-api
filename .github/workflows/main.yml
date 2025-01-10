@@ -1,0 +1,94 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v2
+    
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.9'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: Run tests
+      run: |
+        pytest tests/ --cov=src
+        
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - uses: actions/checkout@v2
+    
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
+    
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.9'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install mangum
+        
+    - name: Create deployment package
+      run: |
+        mkdir -p package
+        cp -r src/* package/
+        cp requirements.txt package/
+        cd package
+        zip -r ../deployment.zip ./*
+        
+    - name: Deploy to AWS
+      run: |
+        # Create DynamoDB table if it doesn't exist
+        aws dynamodb create-table \
+          --table-name lesson_completions \
+          --attribute-definitions \
+            AttributeName=student_id,AttributeType=S \
+            AttributeName=id,AttributeType=S \
+          --key-schema \
+            AttributeName=student_id,KeyType=HASH \
+            AttributeName=id,KeyType=RANGE \
+          --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5 \
+          --region us-east-1 || true
+        
+        # Create Lambda function if it doesn't exist, update if it does
+        function_name="lesson-completion-api"
+        
+        if aws lambda get-function --function-name $function_name 2>&1 | grep -q "Function not found"; then
+          # Create new function
+          aws lambda create-function \
+            --function-name $function_name \
+            --runtime python3.9 \
+            --handler src.api.lambda_handler.handler \
+            --role arn:aws:iam::${AWS_ACCOUNT_ID}:role/lambda-role \
+            --zip-file fileb://deployment.zip
+        else
+          # Update existing function
+          aws lambda update-function-code \
+            --function-name $function_name \
+            --zip-file fileb://deployment.zip
+        fi 

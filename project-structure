@@ -1,0 +1,22 @@
+lesson-management-api/
+├── .github/
+│   └── workflows/
+│       └── main.yml
+├── src/
+│   ├── __init__.py
+│   ├── api/
+│   │   ├── __init__.py
+│   │   └── routes.py
+│   ├── models/
+│   │   ├── __init__.py
+│   │   └── lesson.py
+│   └── services/
+│       ├── __init__.py
+│       └── lesson_service.py
+├── tests/
+│   ├── __init__.py
+│   ├── conftest.py
+│   └── test_lesson_api.py
+├── .gitignore
+├── requirements.txt
+└── README.md 
