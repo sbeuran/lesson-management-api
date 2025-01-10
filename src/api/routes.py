@@ -6,6 +6,8 @@ import uuid
 from datetime import datetime
 import json
 import os
+from decimal import Decimal
+import logging
 
 app = FastAPI()
 
@@ -43,10 +45,17 @@ def record_completion(completion: LessonCompletion):
         if isinstance(item['completion_date'], datetime):
             item['completion_date'] = item['completion_date'].isoformat()
         
+        # Ensure score is Decimal
+        if isinstance(item['score'], float):
+            item['score'] = Decimal(str(item['score']))
+        
         table.put_item(Item=item)
+        
+        # Convert Decimal back to float for response
+        item['score'] = float(item['score'])
         return item
     except Exception as e:
-        print(f"Error recording completion: {str(e)}")  # Add logging
+        logger.error(f"Error recording completion: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/lessons/completion/{student_id}")
@@ -67,7 +76,12 @@ def get_student_completions(student_id: str) -> List[dict]:
 def list_completions() -> List[dict]:
     try:
         response = table.scan()
-        return response.get('Items', [])
+        items = response.get('Items', [])
+        # Convert DynamoDB types to Python types
+        for item in items:
+            if 'score' in item:
+                item['score'] = float(item['score'])
+        return items
     except Exception as e:
-        print(f"Error listing completions: {str(e)}")  # Add logging
+        logger.error(f"Error listing completions: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e)) 
