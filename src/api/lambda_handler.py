@@ -4,13 +4,14 @@ import json
 import logging
 from decimal import Decimal
 import traceback
+from datetime import datetime
 
 # Set up logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 # Create Mangum handler for Lambda
-handler = Mangum(app, lifespan="off")  # Turn off lifespan to avoid FastAPI startup issues
+handler = Mangum(app, lifespan="off")
 
 class DecimalEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -64,6 +65,12 @@ def lambda_handler(event, context):
 
         # Process the request through Mangum
         try:
+            # Add API Gateway context to event
+            if 'requestContext' not in event:
+                event['requestContext'] = {}
+            if 'path' not in event:
+                event['path'] = event.get('resource', '')
+
             response = handler(event, context)
             logger.info(f"Raw handler response: {json.dumps(response)}")
         except Exception as e:
