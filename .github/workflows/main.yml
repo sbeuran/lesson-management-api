@@ -139,27 +139,45 @@ jobs:
         function_name="lesson-completion-api"
         
         if aws lambda get-function --function-name $function_name 2>&1 | grep -q "Function not found"; then
+          # Update existing function
+          aws lambda update-function-code \
+            --function-name $function_name \
+            --zip-file fileb://deployment.zip
+
+          # Wait for update to complete
+          echo "Waiting for Lambda update to complete..."
+          aws lambda wait function-updated --function-name $function_name
+
+          # Update configuration
+          echo "Updating Lambda configuration..."
+          for i in {1..3}; do
+            if aws lambda update-function-configuration \
+              --function-name $function_name \
+              --timeout 30 \
+              --memory-size 256; then
+              break
+            fi
+            echo "Retrying configuration update in 10 seconds..."
+            sleep 10
+          done
+        else
           # Create new function
           aws lambda create-function \
             --function-name $function_name \
             --runtime python3.9 \
             --handler src.api.lambda_handler.handler \
             --role "arn:aws:iam::$AWS_ACCOUNT_ID:role/lambda-role" \
-            --zip-file fileb://deployment.zip
-        else
-          # Update existing function
-          aws lambda update-function-code \
-            --function-name $function_name \
+            --timeout 30 \
+            --memory-size 256 \
             --zip-file fileb://deployment.zip
         fi
 
-        # Add this after creating/updating Lambda function
-        aws lambda update-function-configuration \
-          --function-name $function_name \
-          --timeout 30 \
-          --memory-size 256
+        # Wait for function to be ready
+        echo "Waiting for Lambda function to be ready..."
+        sleep 10
 
-        # Add this after Lambda function creation/update
+        # Add Lambda permission for API Gateway
+        echo "Adding Lambda permission for API Gateway..."
         aws lambda add-permission \
           --function-name $function_name \
           --statement-id apigateway \
