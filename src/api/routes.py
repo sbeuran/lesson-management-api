@@ -8,6 +8,7 @@ import json
 import os
 from decimal import Decimal
 import logging
+import traceback
 
 app = FastAPI()
 
@@ -75,13 +76,24 @@ def get_student_completions(student_id: str) -> List[dict]:
 @app.get("/lessons/completion")
 def list_completions() -> List[dict]:
     try:
+        logger.info("Scanning DynamoDB table")
         response = table.scan()
         items = response.get('Items', [])
+        logger.info(f"Found {len(items)} items")
+        
         # Convert DynamoDB types to Python types
         for item in items:
             if 'score' in item:
                 item['score'] = float(item['score'])
+            if 'completion_date' in item and isinstance(item['completion_date'], str):
+                try:
+                    item['completion_date'] = datetime.fromisoformat(item['completion_date'])
+                except ValueError:
+                    logger.warning(f"Invalid date format: {item['completion_date']}")
+        
+        logger.info("Successfully processed items")
         return items
     except Exception as e:
-        logger.error(f"Error listing completions: {str(e)}", exc_info=True)
+        logger.error(f"Error listing completions: {str(e)}")
+        logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e)) 
