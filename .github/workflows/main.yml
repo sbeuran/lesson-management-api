@@ -261,6 +261,43 @@ jobs:
           echo "API Base URL: https://${api_id}.execute-api.${AWS_DEFAULT_REGION}.amazonaws.com/prod"
           echo "Health Check: https://${api_id}.execute-api.${AWS_DEFAULT_REGION}.amazonaws.com/prod/health"
           echo "Lesson Completion: https://${api_id}.execute-api.${AWS_DEFAULT_REGION}.amazonaws.com/prod/lessons/completion"
+
+          # After creating the API, add API key creation
+          api_key=$(aws apigateway create-api-key \
+            --name "lesson-completion-api-key" \
+            --enabled \
+            --query 'value' \
+            --output text)
+
+          # Create usage plan
+          usage_plan_id=$(aws apigateway create-usage-plan \
+            --name "lesson-completion-api-plan" \
+            --api-stages "[{\"apiId\": \"${api_id}\", \"stage\": \"prod\"}]" \
+            --quota '{"limit": 1000, "period": "MONTH"}' \
+            --throttle '{"burstLimit": 10, "rateLimit": 5}' \
+            --query 'id' \
+            --output text)
+
+          # Add API key to usage plan
+          aws apigateway create-usage-plan-key \
+            --usage-plan-id "${usage_plan_id}" \
+            --key-type "API_KEY" \
+            --key-id "${api_key}"
+
+          # Update method settings to require API key
+          for endpoint in "${health_resource_id}:GET" "${completion_resource_id}:POST" "${completion_resource_id}:GET" "${student_completion_resource_id}:GET"; do
+            resource_id="${endpoint%:*}"
+            method="${endpoint#*:}"
+            
+            aws apigateway update-method \
+              --rest-api-id "${api_id}" \
+              --resource-id "${resource_id}" \
+              --http-method "${method}" \
+              --patch-operations op=replace,path=/apiKeyRequired,value=true
+          done
+
+          # Output the API key
+          echo "API Key: ${api_key}"
         else
           # Deploy updates to existing API
           aws apigateway create-deployment \
