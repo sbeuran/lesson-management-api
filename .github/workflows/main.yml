@@ -247,11 +247,11 @@ jobs:
                 --resource-id "${completion_resource_id}" \
                 --http-method OPTIONS \
                 --status-code 200 \
-                --response-parameters "{
-                  \"method.response.header.Access-Control-Allow-Headers\":\"'Content-Type,X-Api-Key,Authorization'\"
-                  \"method.response.header.Access-Control-Allow-Methods\":\"'GET,POST,OPTIONS'\"
-                  \"method.response.header.Access-Control-Allow-Origin\":\"'*'\"
-                }"
+                --response-parameters '{
+                  "method.response.header.Access-Control-Allow-Headers": "'\''Content-Type,X-Api-Key,Authorization'\''",
+                  "method.response.header.Access-Control-Allow-Methods": "'\''GET,POST,OPTIONS'\''",
+                  "method.response.header.Access-Control-Allow-Origin": "'\''*'\''"
+                }'
             else
               # Regular method setup
               aws apigateway put-method \
