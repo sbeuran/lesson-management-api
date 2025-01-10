@@ -278,8 +278,8 @@ jobs:
             --rest-api-id "${api_id}" \
             --stage-name "prod"
 
-          # Create API key with explicit values
-          echo "Creating API key..."
+          # ALWAYS create/update API key and usage plan
+          echo "Creating/updating API key..."
           api_key_response=$(aws apigateway create-api-key \
             --name "lesson-completion-api-key" \
             --enabled \
@@ -290,10 +290,7 @@ jobs:
           api_key_id=$(echo "$api_key_response" | jq -r '.id')
           api_key_value=$(echo "$api_key_response" | jq -r '.value')
           
-          echo "API key created with ID: ${api_key_id}"
-
-          # Create usage plan with explicit configuration
-          echo "Creating usage plan..."
+          echo "Creating/updating usage plan..."
           usage_plan_response=$(aws apigateway create-usage-plan \
             --name "lesson-completion-api-plan" \
             --description "Usage plan for lesson completion API" \
@@ -303,26 +300,26 @@ jobs:
           
           usage_plan_id=$(echo "$usage_plan_response" | jq -r '.id')
           
-          echo "Usage plan created with ID: ${usage_plan_id}"
-
-          # Associate key with plan
           echo "Associating API key with usage plan..."
           aws apigateway create-usage-plan-key \
             --usage-plan-id "${usage_plan_id}" \
             --key-id "${api_key_id}" \
-            --key-type "API_KEY"
+            --key-type "API_KEY" || true
 
-          # Update methods to require API key
+          # Update all methods to require API key
           echo "Updating methods to require API key..."
-          for endpoint in "${health_resource_id}:GET" "${completion_resource_id}:POST" "${completion_resource_id}:GET" "${student_completion_resource_id}:GET"; do
-            resource_id="${endpoint%:*}"
-            method="${endpoint#*:}"
-            
-            aws apigateway update-method \
-              --rest-api-id "${api_id}" \
-              --resource-id "${resource_id}" \
-              --http-method "${method}" \
-              --patch-operations op=replace,path=/apiKeyRequired,value=true
+          resources=$(aws apigateway get-resources --rest-api-id "${api_id}" --query 'items[*].[id]' --output text)
+          for resource_id in $resources; do
+            methods=$(aws apigateway get-resource --rest-api-id "${api_id}" --resource-id "${resource_id}" --query 'resourceMethods' --output text)
+            for method in $methods; do
+              if [ "$method" != "OPTIONS" ]; then
+                aws apigateway update-method \
+                  --rest-api-id "${api_id}" \
+                  --resource-id "${resource_id}" \
+                  --http-method "${method}" \
+                  --patch-operations op=replace,path=/apiKeyRequired,value=true || true
+              fi
+            done
           done
 
           # Create new deployment to apply changes
@@ -335,16 +332,65 @@ jobs:
           # Output results
           echo "Setup complete!"
           echo "API Base URL: https://${api_id}.execute-api.${AWS_DEFAULT_REGION}.amazonaws.com/prod"
-          echo "Health Check: https://${api_id}.execute-api.${AWS_DEFAULT_REGION}.amazonaws.com/prod/health"
-          echo "Lesson Completion: https://${api_id}.execute-api.${AWS_DEFAULT_REGION}.amazonaws.com/prod/lessons/completion"
           echo "API Key: ${api_key_value}"
         else
-          # Deploy updates to existing API
-          aws apigateway create-deployment \
-            --rest-api-id "${existing_api_id}" \
-            --stage-name "prod"
-          
-          echo "API Base URL: https://${existing_api_id}.execute-api.${AWS_DEFAULT_REGION}.amazonaws.com/prod"
+          api_id="${existing_api_id}"
         fi
+
+        # ALWAYS create/update API key and usage plan
+        echo "Creating/updating API key..."
+        api_key_response=$(aws apigateway create-api-key \
+          --name "lesson-completion-api-key" \
+          --enabled \
+          --generate-distinct-id \
+          --description "API key for lesson completion API" \
+          --tags Key=Environment,Value=prod)
+        
+        api_key_id=$(echo "$api_key_response" | jq -r '.id')
+        api_key_value=$(echo "$api_key_response" | jq -r '.value')
+        
+        echo "Creating/updating usage plan..."
+        usage_plan_response=$(aws apigateway create-usage-plan \
+          --name "lesson-completion-api-plan" \
+          --description "Usage plan for lesson completion API" \
+          --api-stages "[{\"apiId\": \"${api_id}\", \"stage\": \"prod\"}]" \
+          --throttle '{"rateLimit": 10, "burstLimit": 5}' \
+          --quota '{"limit": 1000, "period": "MONTH"}')
+        
+        usage_plan_id=$(echo "$usage_plan_response" | jq -r '.id')
+        
+        echo "Associating API key with usage plan..."
+        aws apigateway create-usage-plan-key \
+          --usage-plan-id "${usage_plan_id}" \
+          --key-id "${api_key_id}" \
+          --key-type "API_KEY" || true
+
+        # Update all methods to require API key
+        echo "Updating methods to require API key..."
+        resources=$(aws apigateway get-resources --rest-api-id "${api_id}" --query 'items[*].[id]' --output text)
+        for resource_id in $resources; do
+          methods=$(aws apigateway get-resource --rest-api-id "${api_id}" --resource-id "${resource_id}" --query 'resourceMethods' --output text)
+          for method in $methods; do
+            if [ "$method" != "OPTIONS" ]; then
+              aws apigateway update-method \
+                --rest-api-id "${api_id}" \
+                --resource-id "${resource_id}" \
+                --http-method "${method}" \
+                --patch-operations op=replace,path=/apiKeyRequired,value=true || true
+            fi
+          done
+        done
+
+        # Create new deployment to apply changes
+        echo "Creating new deployment..."
+        aws apigateway create-deployment \
+          --rest-api-id "${api_id}" \
+          --stage-name "prod" \
+          --description "Deployment with API key requirement"
+
+        # Output results
+        echo "Setup complete!"
+        echo "API Base URL: https://${api_id}.execute-api.${AWS_DEFAULT_REGION}.amazonaws.com/prod"
+        echo "API Key: ${api_key_value}"
         
   
