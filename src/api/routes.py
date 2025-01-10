@@ -22,8 +22,7 @@ def get_dynamodb_client():
             'dynamodb',
             region_name='eu-west-1',
             aws_access_key_id='testing',
-            aws_secret_access_key='testing',
-            endpoint_url='http://motoserver:5000'  # Moto server endpoint
+            aws_secret_access_key='testing'
         )
     return boto3.resource('dynamodb')
 

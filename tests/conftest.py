@@ -12,17 +12,12 @@ def aws_credentials():
     os.environ['AWS_SESSION_TOKEN'] = 'testing'
     os.environ['AWS_DEFAULT_REGION'] = 'eu-west-1'
     os.environ['TESTING'] = 'true'
-    os.environ['MOTO_SERVER_ENABLED'] = 'true'
 
 @pytest.fixture
 def dynamodb():
     with mock_dynamodb():
         # Create the DynamoDB table
-        dynamodb = boto3.resource(
-            'dynamodb',
-            region_name='eu-west-1',
-            endpoint_url='http://motoserver:5000'
-        )
+        dynamodb = boto3.resource('dynamodb', region_name='eu-west-1')
         
         # Create the table
         table = dynamodb.create_table(
