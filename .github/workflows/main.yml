@@ -238,13 +238,11 @@ jobs:
         
         # Set up methods for /lessons/completion
         for method in GET POST OPTIONS; do
-          # Check if method exists
           aws apigateway get-method \
             --rest-api-id "${api_id}" \
             --resource-id "${completion_resource_id}" \
             --http-method "${method}" 2>/dev/null || {
             
-            # Create method if it doesn't exist
             if [ "${method}" = "OPTIONS" ]; then
               # OPTIONS method setup
               aws apigateway put-method \
@@ -301,7 +299,46 @@ jobs:
             fi
           }
         done
-        
+
+        # Create /{student_id} resource and methods
+        student_completion_resource_id=$(aws apigateway create-resource \
+          --rest-api-id "${api_id}" \
+          --parent-id "${completion_resource_id}" \
+          --path-part "{student_id}" \
+          --query 'id' \
+          --output text)
+
+        # Set up methods for /{student_id}
+        for method in GET OPTIONS; do
+          aws apigateway put-method \
+            --rest-api-id "${api_id}" \
+            --resource-id "${student_completion_resource_id}" \
+            --http-method "${method}" \
+            --authorization-type NONE \
+            $([ "${method}" = "OPTIONS" ] && echo "--no-api-key-required" || echo "--api-key-required") \
+            $([ "${method}" = "GET" ] && echo "--request-parameters method.request.path.student_id=true" || echo "")
+
+          if [ "${method}" = "OPTIONS" ]; then
+            # OPTIONS setup (same as above)
+            aws apigateway put-integration \
+              --rest-api-id "${api_id}" \
+              --resource-id "${student_completion_resource_id}" \
+              --http-method OPTIONS \
+              --type MOCK \
+              --request-templates '{"application/json":"{\"statusCode\": 200}"}'
+
+            # ... (rest of OPTIONS setup)
+          else
+            aws apigateway put-integration \
+              --rest-api-id "${api_id}" \
+              --resource-id "${student_completion_resource_id}" \
+              --http-method "${method}" \
+              --type AWS_PROXY \
+              --integration-http-method POST \
+              --uri "arn:aws:apigateway:${AWS_DEFAULT_REGION}:lambda:path/2015-03-31/functions/arn:aws:lambda:${AWS_DEFAULT_REGION}:${AWS_ACCOUNT_ID}:function:${function_name}/invocations"
+          fi
+        done
+
         # Create deployment
         aws apigateway create-deployment \
           --rest-api-id "${api_id}" \
