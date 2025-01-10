@@ -153,6 +153,20 @@ jobs:
             --zip-file fileb://deployment.zip
         fi
 
+        # Add this after creating/updating Lambda function
+        aws lambda update-function-configuration \
+          --function-name $function_name \
+          --timeout 30 \
+          --memory-size 256
+
+        # Add this after Lambda function creation/update
+        aws lambda add-permission \
+          --function-name $function_name \
+          --statement-id apigateway \
+          --action lambda:InvokeFunction \
+          --principal apigateway.amazonaws.com \
+          --source-arn "arn:aws:execute-api:${AWS_DEFAULT_REGION}:${AWS_ACCOUNT_ID}:${api_id}/*/*" || true
+
         # Create or update API Gateway
         api_name="lesson-completion-api"
         
