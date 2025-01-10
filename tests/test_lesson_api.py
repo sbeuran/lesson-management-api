@@ -8,10 +8,13 @@ import boto3
 
 # Ensure we're in testing mode
 os.environ['TESTING'] = 'true'
+os.environ['AWS_ACCESS_KEY_ID'] = 'testing'
+os.environ['AWS_SECRET_ACCESS_KEY'] = 'testing'
+os.environ['AWS_DEFAULT_REGION'] = 'eu-west-1'
 
 client = TestClient(app)
 
-@pytest.fixture(autouse=True)  # autouse=True makes this fixture run automatically
+@pytest.fixture(autouse=True)
 def mock_dynamodb(monkeypatch):
     """Mock DynamoDB interactions for testing"""
     class MockTable:
@@ -20,7 +23,7 @@ def mock_dynamodb(monkeypatch):
         
         def put_item(self, Item):
             student_id = Item['student_id']
-            self.items[student_id] = Item
+            self.items[student_id] = {**Item}
             return {}
             
         def query(self, KeyConditionExpression, ExpressionAttributeValues):
@@ -34,15 +37,23 @@ def mock_dynamodb(monkeypatch):
             
         def Table(self, name):
             return self.table
+        
+        def client(self, service_name, region_name=None):
+            return self
+            
+        def put_metric_data(self, *args, **kwargs):
+            return {}
     
     mock_db = MockDynamoDB()
     
     def mock_resource(*args, **kwargs):
         return mock_db
     
-    # Mock both the resource and client
+    def mock_client(*args, **kwargs):
+        return mock_db
+    
     monkeypatch.setattr(boto3, "resource", mock_resource)
-    monkeypatch.setattr(boto3, "client", mock_resource)
+    monkeypatch.setattr(boto3, "client", mock_client)
     
     return mock_db
 
@@ -59,6 +70,7 @@ def test_record_completion():
     response = client.post("/lessons/completion", json=completion_data)
     assert response.status_code == 200
     assert response.json()["student_id"] == completion_data["student_id"]
+    assert float(response.json()["score"]) == completion_data["score"]
 
 def test_get_student_completions():
     # First create a completion

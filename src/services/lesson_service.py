@@ -17,8 +17,14 @@ class LessonService:
             item = completion.dict()
             item['completion_date'] = completion.completion_date.isoformat()
             
+            # Store the item in DynamoDB
             self.table.put_item(Item=item)
-            return completion
+            
+            # Convert score back to float for response
+            if isinstance(item['score'], str):
+                item['score'] = float(item['score'])
+            
+            return LessonCompletion(**item)
         except Exception as e:
             print(f"Error recording completion: {e}")
             raise
@@ -32,6 +38,9 @@ class LessonService:
             
             completions = []
             for item in response.get('Items', []):
+                # Convert score back to float
+                if isinstance(item['score'], str):
+                    item['score'] = float(item['score'])
                 item['completion_date'] = datetime.fromisoformat(item['completion_date'])
                 completions.append(LessonCompletion(**item))
                 
