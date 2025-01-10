@@ -1,29 +1,16 @@
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, Field
 from datetime import datetime
-from typing import Optional
-from decimal import Decimal
-
-class Lesson(BaseModel):
-    id: str
-    title: str
-    subject: str
-    grade_level: int
+from typing import Optional, Literal
 
 class LessonCompletion(BaseModel):
-    id: Optional[str] = None
-    student_id: str
-    lesson_id: str
+    student_id: str = Field(..., min_length=1)
+    lesson_id: str = Field(..., min_length=1)
     completion_date: datetime
-    score: float
-    duration_minutes: int
-    status: str  # 'completed', 'in_progress', 'failed'
-
-    @validator('score')
-    def validate_score(cls, v):
-        # Convert float to string for DynamoDB compatibility
-        return str(v)
+    score: float = Field(..., ge=0, le=100)
+    duration_minutes: int = Field(..., gt=0)
+    status: Literal["completed", "in_progress", "failed"]
 
     class Config:
         json_encoders = {
-            str: lambda v: float(v) if v.replace('.', '').isdigit() else v
+            datetime: lambda v: v.isoformat()
         } 
