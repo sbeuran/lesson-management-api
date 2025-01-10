@@ -10,6 +10,11 @@ app = FastAPI()
 dynamodb = boto3.resource('dynamodb')
 table = dynamodb.Table('lesson_completions')
 
+def serialize_datetime(obj):
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    raise TypeError(f"Type {type(obj)} not serializable")
+
 @app.get("/health")
 def health_check():
     return {"status": "healthy"}
@@ -20,6 +25,10 @@ def record_completion(completion: LessonCompletion):
         completion_id = str(uuid.uuid4())
         item = completion.dict()
         item['id'] = completion_id
+        
+        # Convert datetime to string for DynamoDB
+        if isinstance(item['completion_date'], datetime):
+            item['completion_date'] = item['completion_date'].isoformat()
         
         table.put_item(Item=item)
         return item
