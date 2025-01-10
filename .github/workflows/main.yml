@@ -35,6 +35,12 @@ jobs:
       run: |
         python -m pytest tests/ --cov=src --cov-report=term-missing -v
         
+    - name: Start Moto server
+      run: |
+        pip install moto[server]
+        moto_server dynamodb -p5000 &
+        sleep 5  # Wait for server to start
+        
   deploy:
     needs: test
     runs-on: ubuntu-latest

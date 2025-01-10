@@ -16,24 +16,31 @@ logger.setLevel(logging.INFO)
 app = FastAPI()
 
 # Configure DynamoDB based on environment
-if os.getenv('TESTING') == 'true':
-    dynamodb = boto3.resource(
-        'dynamodb',
-        endpoint_url='http://localhost:8000',
-        region_name='eu-west-1',
-        aws_access_key_id='testing',
-        aws_secret_access_key='testing'
-    )
-else:
-    dynamodb = boto3.resource('dynamodb')
+def get_dynamodb_client():
+    if os.getenv('TESTING') == 'true':
+        return boto3.resource(
+            'dynamodb',
+            region_name='eu-west-1',
+            aws_access_key_id='testing',
+            aws_secret_access_key='testing',
+            endpoint_url='http://motoserver:5000'  # Moto server endpoint
+        )
+    return boto3.resource('dynamodb')
 
-table = dynamodb.Table('lesson_completions')
+# Initialize DynamoDB table
+table = None
+
+def get_table():
+    global table
+    if table is None:
+        table = get_dynamodb_client().Table('lesson_completions')
+    return table
 
 @app.get("/health")
 async def health_check():
     try:
         # Test DynamoDB connection
-        table.scan(Limit=1)
+        get_table().scan(Limit=1)
         return {"status": "healthy", "message": "API and database are operational"}
     except Exception as e:
         logger.error(f"Health check failed: {str(e)}")
@@ -43,7 +50,7 @@ async def health_check():
 async def list_completions() -> List[dict]:
     try:
         logger.info("Scanning DynamoDB table")
-        response = table.scan()
+        response = get_table().scan()
         items = response.get('Items', [])
         logger.info(f"Found {len(items)} items")
         return items
@@ -58,7 +65,7 @@ async def list_completions() -> List[dict]:
 async def get_student_completions(student_id: str) -> List[dict]:
     try:
         logger.info(f"Querying completions for student: {student_id}")
-        response = table.query(
+        response = get_table().query(
             KeyConditionExpression='student_id = :sid',
             ExpressionAttributeValues={':sid': student_id}
         )
@@ -79,7 +86,7 @@ async def create_completion(completion: LessonCompletion) -> dict:
         item['id'] = str(uuid.uuid4())
         
         logger.info(f"Creating completion: {json.dumps(item)}")
-        table.put_item(Item=item)
+        get_table().put_item(Item=item)
         
         return {"message": "Completion created", "id": item['id']}
     except ClientError as e:
