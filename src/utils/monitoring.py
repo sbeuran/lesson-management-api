@@ -7,7 +7,7 @@ import os
 
 def get_cloudwatch_client():
     """Get CloudWatch client with default region"""
-    return boto3.client('cloudwatch', region_name='us-east-1')
+    return boto3.client('cloudwatch', region_name='eu-west-1')
 
 def monitor_endpoint(func):
     @wraps(func)

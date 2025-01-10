@@ -6,28 +6,36 @@ from ..models.lesson import LessonCompletion
 
 class LessonService:
     def __init__(self):
-        self.dynamodb = boto3.resource('dynamodb')
+        self.dynamodb = boto3.resource('dynamodb', region_name='eu-west-1')
         self.table = self.dynamodb.Table('lesson_completions')
         
     async def record_completion(self, completion: LessonCompletion) -> LessonCompletion:
-        if not completion.id:
-            completion.id = str(uuid.uuid4())
-        
-        item = completion.dict()
-        item['completion_date'] = completion.completion_date.isoformat()
-        
-        self.table.put_item(Item=item)
-        return completion
+        try:
+            if not completion.id:
+                completion.id = str(uuid.uuid4())
+            
+            item = completion.dict()
+            item['completion_date'] = completion.completion_date.isoformat()
+            
+            self.table.put_item(Item=item)
+            return completion
+        except Exception as e:
+            print(f"Error recording completion: {e}")
+            raise
     
     async def get_student_completions(self, student_id: str) -> List[LessonCompletion]:
-        response = self.table.query(
-            KeyConditionExpression='student_id = :sid',
-            ExpressionAttributeValues={':sid': student_id}
-        )
-        
-        completions = []
-        for item in response['Items']:
-            item['completion_date'] = datetime.fromisoformat(item['completion_date'])
-            completions.append(LessonCompletion(**item))
+        try:
+            response = self.table.query(
+                KeyConditionExpression='student_id = :sid',
+                ExpressionAttributeValues={':sid': student_id}
+            )
             
-        return completions 
+            completions = []
+            for item in response.get('Items', []):
+                item['completion_date'] = datetime.fromisoformat(item['completion_date'])
+                completions.append(LessonCompletion(**item))
+                
+            return completions
+        except Exception as e:
+            print(f"Error getting completions: {e}")
+            raise 
