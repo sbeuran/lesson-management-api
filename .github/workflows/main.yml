@@ -50,6 +50,11 @@ jobs:
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: eu-west-1
     
+    - name: Get AWS account ID
+      id: get-aws-account
+      run: |
+        echo "AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)" >> $GITHUB_ENV
+    
     - name: Set up Python
       uses: actions/setup-python@v2
       with:
@@ -83,6 +88,32 @@ jobs:
           --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5 \
           --region eu-west-1 || true
         
+        # Create IAM role for Lambda if it doesn't exist
+        aws iam create-role \
+          --role-name lambda-role \
+          --assume-role-policy-document '{
+            "Version": "2012-10-17",
+            "Statement": [{
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com"
+              }
+            }]
+          }' || true
+        
+        # Attach necessary policies to the role
+        aws iam attach-role-policy \
+          --role-name lambda-role \
+          --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole || true
+        
+        aws iam attach-role-policy \
+          --role-name lambda-role \
+          --policy-arn arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess || true
+        
+        # Wait for role to be ready
+        sleep 10
+        
         # Create Lambda function if it doesn't exist, update if it does
         function_name="lesson-completion-api"
         
@@ -92,7 +123,7 @@ jobs:
             --function-name $function_name \
             --runtime python3.9 \
             --handler src.api.lambda_handler.handler \
-            --role arn:aws:iam::${AWS_ACCOUNT_ID}:role/lambda-role \
+            --role "arn:aws:iam::$AWS_ACCOUNT_ID:role/lambda-role" \
             --zip-file fileb://deployment.zip
         else
           # Update existing function
