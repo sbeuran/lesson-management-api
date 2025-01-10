@@ -1,0 +1,89 @@
+{
+  "info": {
+    "name": "Lesson Completion API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/health",
+          "host": ["{{baseUrl}}"],
+          "path": ["health"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "pm.test(\"Response has status field\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.status).to.eql(\"healthy\");",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create Lesson Completion",
+      "request": {
+        "method": "POST",
+        "url": {
+          "raw": "{{baseUrl}}/lessons/completion",
+          "host": ["{{baseUrl}}"],
+          "path": ["lessons", "completion"]
+        },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"student_id\": \"student001\",\n    \"lesson_id\": \"lesson001\",\n    \"completion_date\": \"2024-01-10T12:00:00\",\n    \"score\": 95.5,\n    \"duration_minutes\": 45,\n    \"status\": \"completed\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Get Student Completions",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/lessons/completion/{{studentId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["lessons", "completion", "{{studentId}}"]
+        }
+      }
+    },
+    {
+      "name": "List All Completions",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/lessons/completion",
+          "host": ["{{baseUrl}}"],
+          "path": ["lessons", "completion"]
+        }
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://7k5ak0ymf6.execute-api.eu-west-1.amazonaws.com/prod"
+    },
+    {
+      "key": "studentId",
+      "value": "student001"
+    }
+  ]
+} 

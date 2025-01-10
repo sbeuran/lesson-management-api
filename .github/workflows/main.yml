@@ -184,26 +184,64 @@ jobs:
             --output text)
           
           # Create all methods
-          for endpoint in "${health_resource_id}:GET" "${completion_resource_id}:POST" "${completion_resource_id}:GET" "${student_completion_resource_id}:GET"; do
+          for endpoint in "${health_resource_id}:GET" "${health_resource_id}:OPTIONS" "${completion_resource_id}:POST" "${completion_resource_id}:GET" "${completion_resource_id}:OPTIONS" "${student_completion_resource_id}:GET" "${student_completion_resource_id}:OPTIONS"; do
             resource_id="${endpoint%:*}"
             method="${endpoint#*:}"
             
             # Create method
-            aws apigateway put-method \
-              --rest-api-id "${api_id}" \
-              --resource-id "${resource_id}" \
-              --http-method "${method}" \
-              --authorization-type NONE \
-              $([ "${resource_id}" = "${student_completion_resource_id}" ] && echo '--request-parameters "method.request.path.student_id=true"' || echo '')
-            
-            # Set up Lambda integration
-            aws apigateway put-integration \
-              --rest-api-id "${api_id}" \
-              --resource-id "${resource_id}" \
-              --http-method "${method}" \
-              --type AWS_PROXY \
-              --integration-http-method POST \
-              --uri "arn:aws:apigateway:${AWS_DEFAULT_REGION}:lambda:path/2015-03-31/functions/arn:aws:lambda:${AWS_DEFAULT_REGION}:${AWS_ACCOUNT_ID}:function:${function_name}/invocations"
+            if [ "${method}" = "OPTIONS" ]; then
+              # Special handling for OPTIONS method
+              aws apigateway put-method \
+                --rest-api-id "${api_id}" \
+                --resource-id "${resource_id}" \
+                --http-method OPTIONS \
+                --authorization-type NONE
+
+              # Add OPTIONS method response
+              aws apigateway put-method-response \
+                --rest-api-id "${api_id}" \
+                --resource-id "${resource_id}" \
+                --http-method OPTIONS \
+                --status-code 200 \
+                --response-parameters "method.response.header.Access-Control-Allow-Headers=true,method.response.header.Access-Control-Allow-Methods=true,method.response.header.Access-Control-Allow-Origin=true"
+
+              # Add OPTIONS integration
+              aws apigateway put-integration \
+                --rest-api-id "${api_id}" \
+                --resource-id "${resource_id}" \
+                --http-method OPTIONS \
+                --type MOCK \
+                --request-templates '{"application/json":"{\"statusCode\": 200}"}'
+
+              # Add OPTIONS integration response
+              aws apigateway put-integration-response \
+                --rest-api-id "${api_id}" \
+                --resource-id "${resource_id}" \
+                --http-method OPTIONS \
+                --status-code 200 \
+                --response-parameters "{
+                  \"method.response.header.Access-Control-Allow-Headers\": \"'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'\",
+                  \"method.response.header.Access-Control-Allow-Methods\": \"'GET,POST,OPTIONS'\",
+                  \"method.response.header.Access-Control-Allow-Origin\": \"'*'\"
+                }"
+            else
+              # Regular method setup (existing code)
+              aws apigateway put-method \
+                --rest-api-id "${api_id}" \
+                --resource-id "${resource_id}" \
+                --http-method "${method}" \
+                --authorization-type NONE \
+                $([ "${resource_id}" = "${student_completion_resource_id}" ] && echo '--request-parameters "method.request.path.student_id=true"' || echo '')
+              
+              # Set up Lambda integration
+              aws apigateway put-integration \
+                --rest-api-id "${api_id}" \
+                --resource-id "${resource_id}" \
+                --http-method "${method}" \
+                --type AWS_PROXY \
+                --integration-http-method POST \
+                --uri "arn:aws:apigateway:${AWS_DEFAULT_REGION}:lambda:path/2015-03-31/functions/arn:aws:lambda:${AWS_DEFAULT_REGION}:${AWS_ACCOUNT_ID}:function:${function_name}/invocations"
+            fi
           done
           
           # Add Lambda permission for API Gateway

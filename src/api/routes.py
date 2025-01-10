@@ -2,6 +2,7 @@ from fastapi import FastAPI, HTTPException, Path
 from typing import List, Optional
 from ..models.lesson import Lesson, LessonCompletion
 from ..services.lesson_service import LessonService
+from datetime import datetime
 
 app = FastAPI(title="Lesson Completion API")
 lesson_service = LessonService()
@@ -34,8 +35,12 @@ async def get_student_completions(
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/health")
+@app.options("/health")
 async def health_check():
     """
     Health check endpoint for the API.
     """
-    return {"status": "healthy"} 
+    return {
+        "status": "healthy",
+        "timestamp": datetime.now().isoformat()
+    } 
