@@ -256,30 +256,43 @@ jobs:
           aws apigateway create-deployment \
             --rest-api-id "${api_id}" \
             --stage-name "prod"
-          
-          # Create API key
-          api_key=$(aws apigateway create-api-key \
+
+          # Create API key with explicit values
+          echo "Creating API key..."
+          api_key_response=$(aws apigateway create-api-key \
             --name "lesson-completion-api-key" \
             --enabled \
-            --query 'value' \
-            --output text)
+            --generate-distinct-id \
+            --description "API key for lesson completion API" \
+            --tags Key=Environment,Value=prod)
           
-          # Create usage plan
-          usage_plan_id=$(aws apigateway create-usage-plan \
+          api_key_id=$(echo "$api_key_response" | jq -r '.id')
+          api_key_value=$(echo "$api_key_response" | jq -r '.value')
+          
+          echo "API key created with ID: ${api_key_id}"
+
+          # Create usage plan with explicit configuration
+          echo "Creating usage plan..."
+          usage_plan_response=$(aws apigateway create-usage-plan \
             --name "lesson-completion-api-plan" \
+            --description "Usage plan for lesson completion API" \
             --api-stages "[{\"apiId\": \"${api_id}\", \"stage\": \"prod\"}]" \
-            --quota '{"limit": 1000, "period": "MONTH"}' \
-            --throttle '{"burstLimit": 10, "rateLimit": 5}' \
-            --query 'id' \
-            --output text)
+            --throttle '{"rateLimit": 10, "burstLimit": 5}' \
+            --quota '{"limit": 1000, "period": "MONTH"}')
           
-          # Add API key to usage plan
+          usage_plan_id=$(echo "$usage_plan_response" | jq -r '.id')
+          
+          echo "Usage plan created with ID: ${usage_plan_id}"
+
+          # Associate key with plan
+          echo "Associating API key with usage plan..."
           aws apigateway create-usage-plan-key \
             --usage-plan-id "${usage_plan_id}" \
-            --key-type "API_KEY" \
-            --key-id $(aws apigateway get-api-keys --name-query "lesson-completion-api-key" --query "items[0].id" --output text)
-          
-          # Update all methods to require API key
+            --key-id "${api_key_id}" \
+            --key-type "API_KEY"
+
+          # Update methods to require API key
+          echo "Updating methods to require API key..."
           for endpoint in "${health_resource_id}:GET" "${completion_resource_id}:POST" "${completion_resource_id}:GET" "${student_completion_resource_id}:GET"; do
             resource_id="${endpoint%:*}"
             method="${endpoint#*:}"
@@ -290,17 +303,20 @@ jobs:
               --http-method "${method}" \
               --patch-operations op=replace,path=/apiKeyRequired,value=true
           done
-          
+
           # Create new deployment to apply changes
+          echo "Creating new deployment..."
           aws apigateway create-deployment \
             --rest-api-id "${api_id}" \
-            --stage-name "prod"
-          
-          # Output the API URLs and key
+            --stage-name "prod" \
+            --description "Deployment with API key requirement"
+
+          # Output results
+          echo "Setup complete!"
           echo "API Base URL: https://${api_id}.execute-api.${AWS_DEFAULT_REGION}.amazonaws.com/prod"
           echo "Health Check: https://${api_id}.execute-api.${AWS_DEFAULT_REGION}.amazonaws.com/prod/health"
           echo "Lesson Completion: https://${api_id}.execute-api.${AWS_DEFAULT_REGION}.amazonaws.com/prod/lessons/completion"
-          echo "API Key: ${api_key}"
+          echo "API Key: ${api_key_value}"
         else
           # Deploy updates to existing API
           aws apigateway create-deployment \
