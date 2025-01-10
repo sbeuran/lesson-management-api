@@ -35,7 +35,7 @@ def health_check():
 def record_completion(completion: LessonCompletion):
     try:
         completion_id = str(uuid.uuid4())
-        item = completion.dict()
+        item = completion.model_dump()
         item['id'] = completion_id
         
         # Convert datetime to string for DynamoDB

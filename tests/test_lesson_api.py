@@ -3,6 +3,7 @@ from fastapi.testclient import TestClient
 from datetime import datetime
 from src.api.routes import app
 from src.models.lesson import CompletionStatus
+from decimal import Decimal
 
 client = TestClient(app)
 
@@ -11,7 +12,7 @@ def test_record_completion():
         "student_id": "test123",
         "lesson_id": "lesson456",
         "completion_date": datetime.now().isoformat(),
-        "score": 95.5,
+        "score": str(Decimal('95.5')),
         "duration_minutes": 45,
         "status": CompletionStatus.COMPLETED.value
     }
@@ -28,7 +29,7 @@ def test_get_student_completions():
         "student_id": "test123",
         "lesson_id": "lesson456",
         "completion_date": datetime.now().isoformat(),
-        "score": 95.5,
+        "score": str(Decimal('95.5')),
         "duration_minutes": 45,
         "status": CompletionStatus.COMPLETED.value
     }
