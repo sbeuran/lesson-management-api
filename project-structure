@@ -6,7 +6,8 @@ lesson-management-api/
 │   ├── __init__.py
 │   ├── api/
 │   │   ├── __init__.py
-│   │   └── routes.py
+│   │   ├── routes.py
+│   │   └── lambda_handler.py
 │   ├── models/
 │   │   ├── __init__.py
 │   │   └── lesson.py

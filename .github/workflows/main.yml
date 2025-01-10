@@ -130,4 +130,95 @@ jobs:
           aws lambda update-function-code \
             --function-name $function_name \
             --zip-file fileb://deployment.zip
+        fi
+
+        # Create or update API Gateway
+        api_name="lesson-completion-api"
+        
+        # Check if API exists
+        existing_api_id=$(aws apigateway get-rest-apis --query "items[?name=='${api_name}'].id" --output text) || true
+        
+        if [ -z "$existing_api_id" ]; then
+          # Create new API
+          api_id=$(aws apigateway create-rest-api \
+            --name "${api_name}" \
+            --query 'id' \
+            --output text)
+          
+          # Get root resource ID
+          root_resource_id=$(aws apigateway get-resources \
+            --rest-api-id "${api_id}" \
+            --query 'items[?path==`/`].id' \
+            --output text)
+          
+          # Create resource for /lessons
+          lessons_resource_id=$(aws apigateway create-resource \
+            --rest-api-id "${api_id}" \
+            --parent-id "${root_resource_id}" \
+            --path-part "lessons" \
+            --query 'id' \
+            --output text)
+          
+          # Create resource for /lessons/completion
+          completion_resource_id=$(aws apigateway create-resource \
+            --rest-api-id "${api_id}" \
+            --parent-id "${lessons_resource_id}" \
+            --path-part "completion" \
+            --query 'id' \
+            --output text)
+          
+          # Create POST method
+          aws apigateway put-method \
+            --rest-api-id "${api_id}" \
+            --resource-id "${completion_resource_id}" \
+            --http-method POST \
+            --authorization-type NONE
+          
+          # Create GET method
+          aws apigateway put-method \
+            --rest-api-id "${api_id}" \
+            --resource-id "${completion_resource_id}" \
+            --http-method GET \
+            --authorization-type NONE
+          
+          # Set up Lambda integration for POST
+          aws apigateway put-integration \
+            --rest-api-id "${api_id}" \
+            --resource-id "${completion_resource_id}" \
+            --http-method POST \
+            --type AWS_PROXY \
+            --integration-http-method POST \
+            --uri "arn:aws:apigateway:${AWS_DEFAULT_REGION}:lambda:path/2015-03-31/functions/arn:aws:lambda:${AWS_DEFAULT_REGION}:${AWS_ACCOUNT_ID}:function:${function_name}/invocations"
+          
+          # Set up Lambda integration for GET
+          aws apigateway put-integration \
+            --rest-api-id "${api_id}" \
+            --resource-id "${completion_resource_id}" \
+            --http-method GET \
+            --type AWS_PROXY \
+            --integration-http-method POST \
+            --uri "arn:aws:apigateway:${AWS_DEFAULT_REGION}:lambda:path/2015-03-31/functions/arn:aws:lambda:${AWS_DEFAULT_REGION}:${AWS_ACCOUNT_ID}:function:${function_name}/invocations"
+          
+          # Add Lambda permission for API Gateway
+          aws lambda add-permission \
+            --function-name "${function_name}" \
+            --statement-id "AllowAPIGatewayInvoke" \
+            --action "lambda:InvokeFunction" \
+            --principal "apigateway.amazonaws.com" \
+            --source-arn "arn:aws:execute-api:${AWS_DEFAULT_REGION}:${AWS_ACCOUNT_ID}:${api_id}/*/*"
+          
+          # Deploy the API
+          aws apigateway create-deployment \
+            --rest-api-id "${api_id}" \
+            --stage-name "prod"
+          
+          # Output the API URL
+          echo "API URL: https://${api_id}.execute-api.${AWS_DEFAULT_REGION}.amazonaws.com/prod/lessons/completion"
+        else
+          # Deploy updates to existing API
+          aws apigateway create-deployment \
+            --rest-api-id "${existing_api_id}" \
+            --stage-name "prod"
+          
+          echo "API URL: https://${existing_api_id}.execute-api.${AWS_DEFAULT_REGION}.amazonaws.com/prod/lessons/completion"
         fi 
