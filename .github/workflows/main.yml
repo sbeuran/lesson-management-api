@@ -111,6 +111,27 @@ jobs:
           --role-name lambda-role \
           --policy-arn arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess || true
         
+        # Add API Gateway management permissions
+        aws iam put-role-policy \
+          --role-name lambda-role \
+          --policy-name "APIGatewayManagement" \
+          --policy-document '{
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "apigateway:POST",
+                  "apigateway:GET",
+                  "apigateway:PUT",
+                  "apigateway:PATCH",
+                  "apigateway:DELETE"
+                ],
+                "Resource": "*"
+              }
+            ]
+          }'
+        
         # Wait for role to be ready
         sleep 10
         
