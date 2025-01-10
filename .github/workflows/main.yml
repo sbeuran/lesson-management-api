@@ -167,6 +167,14 @@ jobs:
             --query 'id' \
             --output text)
           
+          # Create resource for /lessons/completion/{student_id}
+          student_completion_resource_id=$(aws apigateway create-resource \
+            --rest-api-id "${api_id}" \
+            --parent-id "${completion_resource_id}" \
+            --path-part "{student_id}" \
+            --query 'id' \
+            --output text)
+          
           # Create POST method
           aws apigateway put-method \
             --rest-api-id "${api_id}" \
@@ -181,6 +189,14 @@ jobs:
             --http-method GET \
             --authorization-type NONE
           
+          # Create GET method for student completions
+          aws apigateway put-method \
+            --rest-api-id "${api_id}" \
+            --resource-id "${student_completion_resource_id}" \
+            --http-method GET \
+            --authorization-type NONE \
+            --request-parameters "method.request.path.student_id=true"
+          
           # Set up Lambda integration for POST
           aws apigateway put-integration \
             --rest-api-id "${api_id}" \
@@ -194,6 +210,15 @@ jobs:
           aws apigateway put-integration \
             --rest-api-id "${api_id}" \
             --resource-id "${completion_resource_id}" \
+            --http-method GET \
+            --type AWS_PROXY \
+            --integration-http-method POST \
+            --uri "arn:aws:apigateway:${AWS_DEFAULT_REGION}:lambda:path/2015-03-31/functions/arn:aws:lambda:${AWS_DEFAULT_REGION}:${AWS_ACCOUNT_ID}:function:${function_name}/invocations"
+          
+          # Set up Lambda integration for student GET
+          aws apigateway put-integration \
+            --rest-api-id "${api_id}" \
+            --resource-id "${student_completion_resource_id}" \
             --http-method GET \
             --type AWS_PROXY \
             --integration-http-method POST \
@@ -222,3 +247,29 @@ jobs:
           
           echo "API URL: https://${existing_api_id}.execute-api.${AWS_DEFAULT_REGION}.amazonaws.com/prod/lessons/completion"
         fi 
+
+        # Create resource for /health
+        health_resource_id=$(aws apigateway create-resource \
+          --rest-api-id "${api_id}" \
+          --parent-id "${root_resource_id}" \
+          --path-part "health" \
+          --query 'id' \
+          --output text)
+
+        # Create GET method for health check
+        aws apigateway put-method \
+          --rest-api-id "${api_id}" \
+          --resource-id "${health_resource_id}" \
+          --http-method GET \
+          --authorization-type NONE
+
+        # Set up Lambda integration for health check
+        aws apigateway put-integration \
+          --rest-api-id "${api_id}" \
+          --resource-id "${health_resource_id}" \
+          --http-method GET \
+          --type AWS_PROXY \
+          --integration-http-method POST \
+          --uri "arn:aws:apigateway:${AWS_DEFAULT_REGION}:lambda:path/2015-03-31/functions/arn:aws:lambda:${AWS_DEFAULT_REGION}:${AWS_ACCOUNT_ID}:function:${function_name}/invocations"
+        
+  
