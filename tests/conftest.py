@@ -1,7 +1,7 @@
 import pytest
 import boto3
 import os
-from moto.dynamodb2 import mock_dynamodb2
+from moto import mock_dynamodb
 
 @pytest.fixture(autouse=True)
 def aws_credentials():
@@ -16,7 +16,7 @@ def aws_credentials():
 @pytest.fixture(autouse=True)
 def dynamodb(aws_credentials):
     """Create a mock DynamoDB."""
-    with mock_dynamodb2():
+    with mock_dynamodb():
         dynamodb = boto3.resource('dynamodb',
             aws_access_key_id='testing',
             aws_secret_access_key='testing',
