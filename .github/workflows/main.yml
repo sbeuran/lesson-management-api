@@ -456,5 +456,34 @@ jobs:
         echo "Setup complete!"
         echo "API Base URL: https://${api_id}.execute-api.${AWS_DEFAULT_REGION}.amazonaws.com/prod"
         echo "API Key: ${api_key_value}"
+
+        # Add method responses for non-OPTIONS methods
+        for method in GET POST; do
+          aws apigateway put-method-response \
+            --rest-api-id "${api_id}" \
+            --resource-id "${completion_resource_id}" \
+            --http-method "${method}" \
+            --status-code 200 \
+            --response-models '{"application/json": "Empty"}' || true
+
+          aws apigateway put-integration-response \
+            --rest-api-id "${api_id}" \
+            --resource-id "${completion_resource_id}" \
+            --http-method "${method}" \
+            --status-code 200 \
+            --selection-pattern "" || true
+        done
+
+        # Update Lambda permissions
+        aws lambda remove-permission \
+          --function-name $function_name \
+          --statement-id apigateway || true
+
+        aws lambda add-permission \
+          --function-name $function_name \
+          --statement-id apigateway \
+          --action lambda:InvokeFunction \
+          --principal apigateway.amazonaws.com \
+          --source-arn "arn:aws:execute-api:${AWS_DEFAULT_REGION}:${AWS_ACCOUNT_ID}:${api_id}/*/*/*"
         
   
