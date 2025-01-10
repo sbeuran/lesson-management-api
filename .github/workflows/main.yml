@@ -81,6 +81,22 @@ jobs:
         
     - name: Deploy to AWS
       run: |
+        # Add error checking
+        set -e
+        
+        # Rest of deployment script...
+        
+        # Test the deployed API
+        echo "Testing deployed API..."
+        response=$(curl -s -o /dev/null -w "%{http_code}" \
+          -H "X-Api-Key: ${api_key_value}" \
+          "https://${api_id}.execute-api.${AWS_DEFAULT_REGION}.amazonaws.com/prod/health")
+        
+        if [ "$response" != "200" ]; then
+          echo "API health check failed with status: $response"
+          exit 1
+        fi
+        
         # Create DynamoDB table if it doesn't exist
         aws dynamodb create-table \
           --table-name lesson_completions \

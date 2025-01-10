@@ -30,17 +30,24 @@ def format_response(status_code: int, body: dict):
             "Content-Type": "application/json",
             "Access-Control-Allow-Origin": "*",
             "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type,X-Api-Key"
+            "Access-Control-Allow-Headers": "Content-Type,X-Api-Key,Authorization"
         }
     }
 
 def lambda_handler(event, context):
     try:
+        # Log the incoming event
         logger.info(f"Received event: {json.dumps(event)}")
+        logger.info(f"Context: {context}")
 
         # Handle CORS preflight
         if event.get("httpMethod") == "OPTIONS":
             return format_response(200, {"message": "OK"})
+
+        # Log API Gateway proxy info
+        logger.info(f"Path parameters: {event.get('pathParameters')}")
+        logger.info(f"Query parameters: {event.get('queryStringParameters')}")
+        logger.info(f"Headers: {event.get('headers')}")
 
         # Add path parameters to event if they exist
         if event.get('pathParameters'):
@@ -48,6 +55,7 @@ def lambda_handler(event, context):
             for key, value in event['pathParameters'].items():
                 path = path.replace(f"{{{key}}}", value)
             event['path'] = path
+            logger.info(f"Updated path: {path}")
 
         # Process request through Mangum
         try:
@@ -56,7 +64,11 @@ def lambda_handler(event, context):
         except Exception as e:
             logger.error(f"Handler error: {str(e)}")
             logger.error(traceback.format_exc())
-            return format_response(500, {"error": str(e)})
+            return format_response(500, {
+                "error": str(e),
+                "type": type(e).__name__,
+                "trace": traceback.format_exc()
+            })
 
         # Format response
         if isinstance(response, dict):
@@ -71,4 +83,8 @@ def lambda_handler(event, context):
     except Exception as e:
         logger.error(f"Lambda error: {str(e)}")
         logger.error(traceback.format_exc())
-        return format_response(500, {"error": str(e)}) 
+        return format_response(500, {
+            "error": str(e),
+            "type": type(e).__name__,
+            "trace": traceback.format_exc()
+        }) 
