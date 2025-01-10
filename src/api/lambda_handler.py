@@ -52,14 +52,19 @@ def lambda_handler(event, context):
             event['requestContext'] = {}
         if 'path' not in event:
             event['path'] = event.get('resource', '')
-            
+
         # Add path parameters if they exist
         if 'pathParameters' in event and event['pathParameters']:
             event['path'] = event['path'].format(**event['pathParameters'])
 
         # Process request
-        response = handler(event, context)
-        logger.info(f"Raw handler response: {json.dumps(response)}")
+        try:
+            response = handler(event, context)
+            logger.info(f"Raw handler response: {json.dumps(response)}")
+        except Exception as e:
+            logger.error(f"Handler error: {str(e)}")
+            logger.error(traceback.format_exc())
+            return format_response(500, {"error": f"Handler error: {str(e)}"})
 
         # Handle FastAPI Response objects
         if isinstance(response, dict):
