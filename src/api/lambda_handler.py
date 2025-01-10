@@ -5,6 +5,7 @@ import logging
 from decimal import Decimal
 import traceback
 from datetime import datetime
+from fastapi.responses import JSONResponse
 
 # Set up logging
 logger = logging.getLogger()
@@ -34,7 +35,7 @@ def format_response(status_code: int, body: dict):
 def lambda_handler(event, context):
     try:
         logger.info(f"Received event: {json.dumps(event)}")
-        
+
         # Handle CORS preflight
         if event.get("httpMethod") == "OPTIONS":
             return {
@@ -51,16 +52,31 @@ def lambda_handler(event, context):
             event['requestContext'] = {}
         if 'path' not in event:
             event['path'] = event.get('resource', '')
+            
+        # Add path parameters if they exist
+        if 'pathParameters' in event and event['pathParameters']:
+            event['path'] = event['path'].format(**event['pathParameters'])
 
         # Process request
         response = handler(event, context)
-        logger.info(f"Handler response: {json.dumps(response)}")
+        logger.info(f"Raw handler response: {json.dumps(response)}")
 
-        # Format response if needed
-        if isinstance(response, dict) and "statusCode" not in response:
-            response = format_response(200, response)
-
-        return response
+        # Handle FastAPI Response objects
+        if isinstance(response, dict):
+            if "statusCode" not in response:
+                return format_response(200, response)
+            return response
+        elif isinstance(response, JSONResponse):
+            return {
+                "statusCode": response.status_code,
+                "body": response.body.decode(),
+                "headers": {
+                    "Content-Type": "application/json",
+                    "Access-Control-Allow-Origin": "*"
+                }
+            }
+        else:
+            return format_response(200, {"data": str(response)})
 
     except Exception as e:
         logger.error(f"Error: {str(e)}")
