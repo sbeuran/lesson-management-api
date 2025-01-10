@@ -11,11 +11,12 @@ app = FastAPI()
 
 # Configure DynamoDB resource based on environment
 if os.getenv('TESTING') == 'true':
-    dynamodb = boto3.resource('dynamodb',
+    dynamodb = boto3.resource(
+        'dynamodb',
+        region_name='eu-west-1',
         aws_access_key_id='testing',
         aws_secret_access_key='testing',
-        region_name='eu-west-1',
-        endpoint_url='http://localhost:8000'
+        endpoint_url=None  # Remove localhost endpoint
     )
 else:
     dynamodb = boto3.resource('dynamodb')
