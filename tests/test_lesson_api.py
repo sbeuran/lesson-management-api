@@ -7,6 +7,9 @@ import boto3
 import os
 from moto import mock_dynamodb
 
+# Set testing environment
+os.environ['TESTING'] = 'true'
+
 client = TestClient(app)
 
 @pytest.fixture
@@ -23,7 +26,11 @@ def dynamodb(aws_credentials):
     """Create a mock DynamoDB."""
     with mock_dynamodb():
         # Create the DynamoDB table
-        dynamodb = boto3.resource("dynamodb")
+        dynamodb = boto3.resource('dynamodb',
+            aws_access_key_id='testing',
+            aws_secret_access_key='testing',
+            region_name='eu-west-1'
+        )
         table = dynamodb.create_table(
             TableName="lesson_completions",
             KeySchema=[

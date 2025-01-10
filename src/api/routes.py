@@ -5,9 +5,21 @@ import boto3
 import uuid
 from datetime import datetime
 import json
+import os
 
 app = FastAPI()
-dynamodb = boto3.resource('dynamodb')
+
+# Configure DynamoDB resource based on environment
+if os.getenv('TESTING') == 'true':
+    dynamodb = boto3.resource('dynamodb',
+        aws_access_key_id='testing',
+        aws_secret_access_key='testing',
+        region_name='eu-west-1',
+        endpoint_url='http://localhost:8000'
+    )
+else:
+    dynamodb = boto3.resource('dynamodb')
+
 table = dynamodb.Table('lesson_completions')
 
 def serialize_datetime(obj):
@@ -33,6 +45,7 @@ def record_completion(completion: LessonCompletion):
         table.put_item(Item=item)
         return item
     except Exception as e:
+        print(f"Error recording completion: {str(e)}")  # Add logging
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/lessons/completion/{student_id}")
@@ -46,6 +59,7 @@ def get_student_completions(student_id: str) -> List[dict]:
         )
         return response.get('Items', [])
     except Exception as e:
+        print(f"Error getting completions: {str(e)}")  # Add logging
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/lessons/completion")
@@ -54,4 +68,5 @@ def list_completions() -> List[dict]:
         response = table.scan()
         return response.get('Items', [])
     except Exception as e:
+        print(f"Error listing completions: {str(e)}")  # Add logging
         raise HTTPException(status_code=500, detail=str(e)) 
