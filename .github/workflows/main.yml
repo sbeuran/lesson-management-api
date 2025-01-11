@@ -167,14 +167,18 @@ jobs:
         echo "Waiting for Lambda function to be ready..."
         sleep 15
 
-        # Add Lambda permission for API Gateway
-        echo "Adding Lambda permission for API Gateway..."
+        # Update Lambda permissions with timestamp
+        timestamp=$(date +%s)
+        aws lambda remove-permission \
+          --function-name $function_name \
+          --statement-id apigateway || true
+
         aws lambda add-permission \
           --function-name $function_name \
-          --statement-id apigateway \
+          --statement-id "apigateway-${timestamp}" \
           --action lambda:InvokeFunction \
           --principal apigateway.amazonaws.com \
-          --source-arn "arn:aws:execute-api:${AWS_DEFAULT_REGION}:${AWS_ACCOUNT_ID}:${api_id}/*/*" || true
+          --source-arn "arn:aws:execute-api:${AWS_DEFAULT_REGION}:${AWS_ACCOUNT_ID}:${api_id}/*/*/*"
 
         # Create or update API Gateway
         api_name="lesson-completion-api"
@@ -400,23 +404,39 @@ jobs:
             --path-part "health" \
             --query 'id' \
             --output text)
+
+          # Set up health check method
+          aws apigateway put-method \
+            --rest-api-id "${api_id}" \
+            --resource-id "${health_resource_id}" \
+            --http-method GET \
+            --authorization-type NONE \
+            --api-key-required true
+
+          aws apigateway put-integration \
+            --rest-api-id "${api_id}" \
+            --resource-id "${health_resource_id}" \
+            --http-method GET \
+            --type AWS_PROXY \
+            --integration-http-method POST \
+            --uri "arn:aws:apigateway:${AWS_DEFAULT_REGION}:lambda:path/2015-03-31/functions/arn:aws:lambda:${AWS_DEFAULT_REGION}:${AWS_ACCOUNT_ID}:function:${function_name}/invocations"
+
+          # Add method response
+          aws apigateway put-method-response \
+            --rest-api-id "${api_id}" \
+            --resource-id "${health_resource_id}" \
+            --http-method GET \
+            --status-code 200 \
+            --response-models '{"application/json": "Empty"}'
+
+          # Add integration response
+          aws apigateway put-integration-response \
+            --rest-api-id "${api_id}" \
+            --resource-id "${health_resource_id}" \
+            --http-method GET \
+            --status-code 200 \
+            --selection-pattern ""
         fi
-
-        # Set up health check method
-        aws apigateway put-method \
-          --rest-api-id "${api_id}" \
-          --resource-id "${health_resource_id}" \
-          --http-method GET \
-          --authorization-type NONE \
-          --api-key-required true || true
-
-        aws apigateway put-integration \
-          --rest-api-id "${api_id}" \
-          --resource-id "${health_resource_id}" \
-          --http-method GET \
-          --type AWS_PROXY \
-          --integration-http-method POST \
-          --uri "arn:aws:apigateway:${AWS_DEFAULT_REGION}:lambda:path/2015-03-31/functions/arn:aws:lambda:${AWS_DEFAULT_REGION}:${AWS_ACCOUNT_ID}:function:${function_name}/invocations" || true
 
         # Create API key and usage plan before testing
         echo "Creating/updating API key..."
