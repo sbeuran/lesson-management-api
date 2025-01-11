@@ -203,7 +203,7 @@ jobs:
           --query 'items[?path==`/`].id' \
           --output text)
 
-        # Create health check endpoint first
+        # Create health check endpoint
         health_resource_id=$(aws apigateway get-resources \
           --rest-api-id "${api_id}" \
           --query "items[?path=='/health'].id" \
@@ -218,7 +218,7 @@ jobs:
             --query 'id' \
             --output text)
 
-          # Set up health check method
+          # Set up GET method
           aws apigateway put-method \
             --rest-api-id "${api_id}" \
             --resource-id "${health_resource_id}" \
@@ -226,52 +226,32 @@ jobs:
             --authorization-type NONE \
             --api-key-required true
 
-          # Set up health check integration
+          # Set up integration
           aws apigateway put-integration \
             --rest-api-id "${api_id}" \
             --resource-id "${health_resource_id}" \
             --http-method GET \
             --type AWS_PROXY \
             --integration-http-method POST \
-            --uri "arn:aws:apigateway:${AWS_DEFAULT_REGION}:lambda:path/2015-03-31/functions/arn:aws:lambda:${AWS_DEFAULT_REGION}:${AWS_ACCOUNT_ID}:function:${function_name}/invocations" \
-            --passthrough-behavior WHEN_NO_MATCH
+            --uri "arn:aws:apigateway:${AWS_DEFAULT_REGION}:lambda:path/2015-03-31/functions/arn:aws:lambda:${AWS_DEFAULT_REGION}:${AWS_ACCOUNT_ID}:function:${function_name}/invocations"
 
-          # Add OPTIONS method for CORS
-          aws apigateway put-method \
-            --rest-api-id "${api_id}" \
-            --resource-id "${health_resource_id}" \
-            --http-method OPTIONS \
-            --authorization-type NONE \
-            --no-api-key-required
-
-          aws apigateway put-integration \
-            --rest-api-id "${api_id}" \
-            --resource-id "${health_resource_id}" \
-            --http-method OPTIONS \
-            --type MOCK \
-            --request-templates '{"application/json": "{\"statusCode\": 200}"}'
-
+          # Add method response
           aws apigateway put-method-response \
             --rest-api-id "${api_id}" \
             --resource-id "${health_resource_id}" \
-            --http-method OPTIONS \
+            --http-method GET \
             --status-code 200 \
-            --response-parameters "{
-              \"method.response.header.Access-Control-Allow-Headers\":true,
-              \"method.response.header.Access-Control-Allow-Methods\":true,
-              \"method.response.header.Access-Control-Allow-Origin\":true
-            }"
+            --response-models '{"application/json": "Empty"}' \
+            --response-parameters '{"method.response.header.Access-Control-Allow-Origin":false}'
 
+          # Add integration response
           aws apigateway put-integration-response \
             --rest-api-id "${api_id}" \
             --resource-id "${health_resource_id}" \
-            --http-method OPTIONS \
+            --http-method GET \
             --status-code 200 \
-            --response-parameters "{
-              \"method.response.header.Access-Control-Allow-Headers\":\"'Content-Type,X-Api-Key,Authorization'\"
-              \"method.response.header.Access-Control-Allow-Methods\":\"'GET,POST,OPTIONS'\"
-              \"method.response.header.Access-Control-Allow-Origin\":\"'*'\"
-            }"
+            --selection-pattern "" \
+            --response-parameters '{"method.response.header.Access-Control-Allow-Origin":"'"'*'"'"}'
         fi
 
         # Create API key and usage plan
@@ -298,23 +278,17 @@ jobs:
           --key-id "${api_key_id}" \
           --key-type "API_KEY" || true
 
-        # Create deployment and stage if they don't exist
-        echo "Creating deployment and stage..."
-        aws apigateway create-deployment \
+        # Create new deployment
+        echo "Creating new deployment..."
+        deployment_id=$(aws apigateway create-deployment \
           --rest-api-id "${api_id}" \
           --stage-name "prod" \
-          --description "Production deployment" || true
+          --description "Production deployment" \
+          --query 'id' \
+          --output text)
 
-        # Update stage settings
-        aws apigateway update-stage \
-          --rest-api-id "${api_id}" \
-          --stage-name "prod" \
-          --patch-operations \
-            op=replace,path=/*/*/logging/loglevel,value=INFO \
-            op=replace,path=/*/*/metrics/enabled,value=true || true
-
-        # Wait for changes to propagate
-        echo "Waiting for changes to propagate..."
+        # Wait for deployment to complete
+        echo "Waiting for deployment to complete..."
         sleep 30
 
         # Test the deployed API
@@ -323,8 +297,7 @@ jobs:
           echo "Using API key: ${api_key_value}"
           response=$(curl -s -w "\n%{http_code}" \
             -H "x-api-key: ${api_key_value}" \
-            "https://${api_id}.execute-api.${AWS_DEFAULT_REGION}.amazonaws.com/prod/health" \
-            -v)
+            "https://${api_id}.execute-api.${AWS_DEFAULT_REGION}.amazonaws.com/prod/health")
           
           status_code=$(echo "$response" | tail -n1)
           response_body=$(echo "$response" | head -n-1)
