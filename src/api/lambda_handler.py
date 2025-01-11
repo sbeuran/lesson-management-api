@@ -44,6 +44,14 @@ def lambda_handler(event, context):
         if event.get("httpMethod") == "OPTIONS":
             return format_response(200, {"message": "OK"})
 
+        # Special handling for health check
+        if event.get("path") == "/health":
+            return format_response(200, {
+                "status": "healthy",
+                "timestamp": datetime.utcnow().isoformat(),
+                "version": "1.0.0"
+            })
+
         # Log API Gateway proxy info
         logger.info(f"Path parameters: {event.get('pathParameters')}")
         logger.info(f"Query parameters: {event.get('queryStringParameters')}")

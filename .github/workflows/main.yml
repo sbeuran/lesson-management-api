@@ -386,6 +386,62 @@ jobs:
           --principal apigateway.amazonaws.com \
           --source-arn "arn:aws:execute-api:${AWS_DEFAULT_REGION}:${AWS_ACCOUNT_ID}:${api_id}/*/GET/lessons/completion/*" || true
 
+        # Create health check endpoint
+        health_resource_id=$(aws apigateway get-resources \
+          --rest-api-id "${api_id}" \
+          --query "items[?path=='/health'].id" \
+          --output text) || true
+
+        if [ -z "$health_resource_id" ]; then
+          echo "Creating health check endpoint..."
+          health_resource_id=$(aws apigateway create-resource \
+            --rest-api-id "${api_id}" \
+            --parent-id "${root_resource_id}" \
+            --path-part "health" \
+            --query 'id' \
+            --output text)
+        fi
+
+        # Set up health check method
+        aws apigateway put-method \
+          --rest-api-id "${api_id}" \
+          --resource-id "${health_resource_id}" \
+          --http-method GET \
+          --authorization-type NONE \
+          --api-key-required true || true
+
+        aws apigateway put-integration \
+          --rest-api-id "${api_id}" \
+          --resource-id "${health_resource_id}" \
+          --http-method GET \
+          --type AWS_PROXY \
+          --integration-http-method POST \
+          --uri "arn:aws:apigateway:${AWS_DEFAULT_REGION}:lambda:path/2015-03-31/functions/arn:aws:lambda:${AWS_DEFAULT_REGION}:${AWS_ACCOUNT_ID}:function:${function_name}/invocations" || true
+
+        # Create API key and usage plan before testing
+        echo "Creating/updating API key..."
+        api_key_response=$(aws apigateway create-api-key \
+          --name "lesson-completion-api-key" \
+          --enabled \
+          --generate-distinct-id)
+
+        api_key_id=$(echo "$api_key_response" | jq -r '.id')
+        api_key_value=$(echo "$api_key_response" | jq -r '.value')
+
+        echo "Creating/updating usage plan..."
+        usage_plan_response=$(aws apigateway create-usage-plan \
+          --name "lesson-completion-api-plan" \
+          --description "Usage plan for lesson completion API" \
+          --api-stages "[{\"apiId\": \"${api_id}\", \"stage\": \"prod\"}]")
+
+        usage_plan_id=$(echo "$usage_plan_response" | jq -r '.id')
+
+        echo "Associating API key with usage plan..."
+        aws apigateway create-usage-plan-key \
+          --usage-plan-id "${usage_plan_id}" \
+          --key-id "${api_key_id}" \
+          --key-type "API_KEY" || true
+
         # Create final deployment
         echo "Creating final deployment..."
         deployment_id=$(aws apigateway create-deployment \
@@ -399,15 +455,16 @@ jobs:
         echo "Waiting for deployment to be ready..."
         sleep 15
 
-        # Test the deployed API
+        # Test the deployed API with proper API key
         echo "Testing deployed API..."
         for i in {1..3}; do
-          response=$(curl -s -w "%{http_code}" \
-            -H "X-Api-Key: ${api_key_value}" \
+          echo "Using API key: ${api_key_value}"
+          response=$(curl -s -w "\n%{http_code}" \
+            -H "x-api-key: ${api_key_value}" \
             "https://${api_id}.execute-api.${AWS_DEFAULT_REGION}.amazonaws.com/prod/health")
           
-          status_code=${response: -3}
-          response_body=${response:0:${#response}-3}
+          status_code=$(echo "$response" | tail -n1)
+          response_body=$(echo "$response" | head -n-1)
           
           echo "Attempt $i - Status code: $status_code"
           echo "Response body: $response_body"

@@ -10,7 +10,7 @@
         "method": "GET",
         "header": [
           {
-            "key": "X-Api-Key",
+            "key": "x-api-key",
             "value": "{{apiKey}}",
             "type": "text"
           }
