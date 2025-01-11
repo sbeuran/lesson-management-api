@@ -226,29 +226,52 @@ jobs:
             --authorization-type NONE \
             --api-key-required true
 
+          # Set up health check integration
           aws apigateway put-integration \
             --rest-api-id "${api_id}" \
             --resource-id "${health_resource_id}" \
             --http-method GET \
             --type AWS_PROXY \
             --integration-http-method POST \
-            --uri "arn:aws:apigateway:${AWS_DEFAULT_REGION}:lambda:path/2015-03-31/functions/arn:aws:lambda:${AWS_DEFAULT_REGION}:${AWS_ACCOUNT_ID}:function:${function_name}/invocations"
+            --uri "arn:aws:apigateway:${AWS_DEFAULT_REGION}:lambda:path/2015-03-31/functions/arn:aws:lambda:${AWS_DEFAULT_REGION}:${AWS_ACCOUNT_ID}:function:${function_name}/invocations" \
+            --passthrough-behavior WHEN_NO_MATCH
 
-          # Add method response
+          # Add OPTIONS method for CORS
+          aws apigateway put-method \
+            --rest-api-id "${api_id}" \
+            --resource-id "${health_resource_id}" \
+            --http-method OPTIONS \
+            --authorization-type NONE \
+            --no-api-key-required
+
+          aws apigateway put-integration \
+            --rest-api-id "${api_id}" \
+            --resource-id "${health_resource_id}" \
+            --http-method OPTIONS \
+            --type MOCK \
+            --request-templates '{"application/json": "{\"statusCode\": 200}"}'
+
           aws apigateway put-method-response \
             --rest-api-id "${api_id}" \
             --resource-id "${health_resource_id}" \
-            --http-method GET \
+            --http-method OPTIONS \
             --status-code 200 \
-            --response-models '{"application/json": "Empty"}'
+            --response-parameters "{
+              \"method.response.header.Access-Control-Allow-Headers\":true,
+              \"method.response.header.Access-Control-Allow-Methods\":true,
+              \"method.response.header.Access-Control-Allow-Origin\":true
+            }"
 
-          # Add integration response
           aws apigateway put-integration-response \
             --rest-api-id "${api_id}" \
             --resource-id "${health_resource_id}" \
-            --http-method GET \
+            --http-method OPTIONS \
             --status-code 200 \
-            --selection-pattern ""
+            --response-parameters "{
+              \"method.response.header.Access-Control-Allow-Headers\":\"'Content-Type,X-Api-Key,Authorization'\"
+              \"method.response.header.Access-Control-Allow-Methods\":\"'GET,POST,OPTIONS'\"
+              \"method.response.header.Access-Control-Allow-Origin\":\"'*'\"
+            }"
         fi
 
         # Create API key and usage plan
@@ -275,18 +298,24 @@ jobs:
           --key-id "${api_key_id}" \
           --key-type "API_KEY" || true
 
-        # Create deployment
-        echo "Creating deployment..."
-        deployment_id=$(aws apigateway create-deployment \
+        # Create deployment and stage if they don't exist
+        echo "Creating deployment and stage..."
+        aws apigateway create-deployment \
           --rest-api-id "${api_id}" \
           --stage-name "prod" \
-          --description "Initial deployment" \
-          --query 'id' \
-          --output text)
+          --description "Production deployment" || true
 
-        # Wait for deployment to complete
-        echo "Waiting for deployment to be ready..."
-        sleep 20
+        # Update stage settings
+        aws apigateway update-stage \
+          --rest-api-id "${api_id}" \
+          --stage-name "prod" \
+          --patch-operations \
+            op=replace,path=/*/*/logging/loglevel,value=INFO \
+            op=replace,path=/*/*/metrics/enabled,value=true || true
+
+        # Wait for changes to propagate
+        echo "Waiting for changes to propagate..."
+        sleep 30
 
         # Test the deployed API
         echo "Testing deployed API..."
@@ -294,7 +323,8 @@ jobs:
           echo "Using API key: ${api_key_value}"
           response=$(curl -s -w "\n%{http_code}" \
             -H "x-api-key: ${api_key_value}" \
-            "https://${api_id}.execute-api.${AWS_DEFAULT_REGION}.amazonaws.com/prod/health")
+            "https://${api_id}.execute-api.${AWS_DEFAULT_REGION}.amazonaws.com/prod/health" \
+            -v)
           
           status_code=$(echo "$response" | tail -n1)
           response_body=$(echo "$response" | head -n-1)

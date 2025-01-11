@@ -38,61 +38,36 @@ def lambda_handler(event, context):
     try:
         # Log the incoming event
         logger.info(f"Received event: {json.dumps(event)}")
-        logger.info(f"Context: {context}")
 
-        # Handle CORS preflight
-        if event.get("httpMethod") == "OPTIONS":
-            return format_response(200, {"message": "OK"})
-
-        # Special handling for health check
-        if event.get("path") == "/health":
+        # Direct health check response
+        if event.get('rawPath', '') == '/health' or event.get('path', '') == '/health':
             return format_response(200, {
                 "status": "healthy",
                 "timestamp": datetime.utcnow().isoformat(),
                 "version": "1.0.0"
             })
 
-        # Log API Gateway proxy info
-        logger.info(f"Path parameters: {event.get('pathParameters')}")
-        logger.info(f"Query parameters: {event.get('queryStringParameters')}")
-        logger.info(f"Headers: {event.get('headers')}")
-
-        # Add path parameters to event if they exist
-        if event.get('pathParameters'):
-            path = event.get('path', '')
-            for key, value in event['pathParameters'].items():
-                path = path.replace(f"{{{key}}}", value)
-            event['path'] = path
-            logger.info(f"Updated path: {path}")
+        # Handle CORS preflight
+        if event.get("requestContext", {}).get("http", {}).get("method") == "OPTIONS":
+            return format_response(200, {"message": "OK"})
 
         # Process request through Mangum
         try:
             response = handler(event, context)
             logger.info(f"Handler response: {json.dumps(response)}")
+            return response
         except Exception as e:
             logger.error(f"Handler error: {str(e)}")
             logger.error(traceback.format_exc())
             return format_response(500, {
                 "error": str(e),
-                "type": type(e).__name__,
-                "trace": traceback.format_exc()
+                "type": type(e).__name__
             })
-
-        # Format response
-        if isinstance(response, dict):
-            if "statusCode" not in response:
-                return format_response(200, response)
-            return response
-        elif isinstance(response, list):
-            return format_response(200, {"items": response})
-        else:
-            return format_response(200, {"data": str(response)})
 
     except Exception as e:
         logger.error(f"Lambda error: {str(e)}")
         logger.error(traceback.format_exc())
         return format_response(500, {
             "error": str(e),
-            "type": type(e).__name__,
-            "trace": traceback.format_exc()
+            "type": type(e).__name__
         }) 
