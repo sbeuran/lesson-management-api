@@ -170,32 +170,21 @@ jobs:
         # Create or update API Gateway
         api_name="lesson-completion-api"
         
-        # Check if API exists
-        existing_api_id=$(aws apigateway get-rest-apis --query "items[?name=='${api_name}'].id" --output text) || true
-        
-        if [ -z "$existing_api_id" ]; then
-          # Create new API with CORS enabled
-          api_id=$(aws apigateway create-rest-api \
-            --name "${api_name}" \
-            --endpoint-configuration types=REGIONAL \
-            --query 'id' \
-            --output text)
-        else
-          api_id="${existing_api_id}"
+        # Delete existing API if it exists
+        existing_api_id=$(aws apigateway get-rest-apis --query "items[?name=='${api_name}'].id" --output text)
+        if [ ! -z "$existing_api_id" ]; then
+          echo "Deleting existing API..."
+          aws apigateway delete-rest-api --rest-api-id "${existing_api_id}"
+          sleep 30  # Wait for deletion to complete
         fi
-        
-        # Update Lambda permissions with timestamp
-        timestamp=$(date +%s)
-        aws lambda remove-permission \
-          --function-name $function_name \
-          --statement-id apigateway || true
 
-        aws lambda add-permission \
-          --function-name $function_name \
-          --statement-id "apigateway-${timestamp}" \
-          --action lambda:InvokeFunction \
-          --principal apigateway.amazonaws.com \
-          --source-arn "arn:aws:execute-api:${AWS_DEFAULT_REGION}:${AWS_ACCOUNT_ID}:${api_id}/*/*/*"
+        # Create new API
+        echo "Creating new API..."
+        api_id=$(aws apigateway create-rest-api \
+          --name "${api_name}" \
+          --endpoint-configuration types=REGIONAL \
+          --query 'id' \
+          --output text)
 
         # Get root resource ID
         root_resource_id=$(aws apigateway get-resources \
@@ -203,100 +192,71 @@ jobs:
           --query 'items[?path==`/`].id' \
           --output text)
 
-        # Create health check endpoint
-        health_resource_id=$(aws apigateway get-resources \
+        # Create health endpoint
+        echo "Creating health endpoint..."
+        health_resource_id=$(aws apigateway create-resource \
           --rest-api-id "${api_id}" \
-          --query "items[?path=='/health'].id" \
-          --output text) || true
+          --parent-id "${root_resource_id}" \
+          --path-part "health" \
+          --query 'id' \
+          --output text)
 
-        if [ -z "$health_resource_id" ]; then
-          echo "Creating health check endpoint..."
-          health_resource_id=$(aws apigateway create-resource \
-            --rest-api-id "${api_id}" \
-            --parent-id "${root_resource_id}" \
-            --path-part "health" \
-            --query 'id' \
-            --output text)
+        # Create GET method
+        aws apigateway put-method \
+          --rest-api-id "${api_id}" \
+          --resource-id "${health_resource_id}" \
+          --http-method GET \
+          --authorization-type NONE \
+          --api-key-required true
 
-          # Set up GET method
-          aws apigateway put-method \
-            --rest-api-id "${api_id}" \
-            --resource-id "${health_resource_id}" \
-            --http-method GET \
-            --authorization-type NONE \
-            --api-key-required true
+        # Create integration
+        aws apigateway put-integration \
+          --rest-api-id "${api_id}" \
+          --resource-id "${health_resource_id}" \
+          --http-method GET \
+          --type AWS_PROXY \
+          --integration-http-method POST \
+          --uri "arn:aws:apigateway:${AWS_DEFAULT_REGION}:lambda:path/2015-03-31/functions/arn:aws:lambda:${AWS_DEFAULT_REGION}:${AWS_ACCOUNT_ID}:function:${function_name}/invocations"
 
-          # Set up integration
-          aws apigateway put-integration \
-            --rest-api-id "${api_id}" \
-            --resource-id "${health_resource_id}" \
-            --http-method GET \
-            --type AWS_PROXY \
-            --integration-http-method POST \
-            --uri "arn:aws:apigateway:${AWS_DEFAULT_REGION}:lambda:path/2015-03-31/functions/arn:aws:lambda:${AWS_DEFAULT_REGION}:${AWS_ACCOUNT_ID}:function:${function_name}/invocations"
-
-          # Add method response
-          aws apigateway put-method-response \
-            --rest-api-id "${api_id}" \
-            --resource-id "${health_resource_id}" \
-            --http-method GET \
-            --status-code 200 \
-            --response-models '{"application/json": "Empty"}'
-        fi
-
-        # Delete existing API key and usage plan
-        echo "Cleaning up existing API key and usage plan..."
-        existing_key_id=$(aws apigateway get-api-keys --name-query "lesson-completion-api-key" --query "items[0].id" --output text || true)
-        if [ ! -z "$existing_key_id" ] && [ "$existing_key_id" != "None" ]; then
-          aws apigateway delete-api-key --api-key "$existing_key_id" || true
-        fi
-
-        existing_plan_id=$(aws apigateway get-usage-plans --query "items[?name=='lesson-completion-api-plan'].id" --output text || true)
-        if [ ! -z "$existing_plan_id" ] && [ "$existing_plan_id" != "None" ]; then
-          aws apigateway delete-usage-plan --usage-plan-id "$existing_plan_id" || true
-        fi
-
-        # Create new API key
-        echo "Creating new API key..."
+        # Create API key
+        echo "Creating API key..."
         api_key_response=$(aws apigateway create-api-key \
           --name "lesson-completion-api-key" \
           --enabled \
           --generate-distinct-id)
-
+        
         api_key_id=$(echo "$api_key_response" | jq -r '.id')
         api_key_value=$(echo "$api_key_response" | jq -r '.value')
 
-        # Create new usage plan
-        echo "Creating new usage plan..."
+        # Create usage plan
+        echo "Creating usage plan..."
         usage_plan_response=$(aws apigateway create-usage-plan \
           --name "lesson-completion-api-plan" \
           --description "Usage plan for lesson completion API" \
           --api-stages "[{\"apiId\": \"${api_id}\", \"stage\": \"prod\"}]")
-
+        
         usage_plan_id=$(echo "$usage_plan_response" | jq -r '.id')
 
         # Associate API key with usage plan
-        echo "Associating API key with usage plan..."
         aws apigateway create-usage-plan-key \
           --usage-plan-id "${usage_plan_id}" \
           --key-id "${api_key_id}" \
           --key-type "API_KEY"
 
-        # Create new deployment
-        echo "Creating new deployment..."
+        # Create deployment
+        echo "Creating deployment..."
         aws apigateway create-deployment \
           --rest-api-id "${api_id}" \
-          --stage-name "prod" \
-          --description "Production deployment"
+          --stage-name "prod"
 
         # Wait for deployment
         echo "Waiting for deployment..."
-        sleep 45
+        sleep 60
 
-        # Test the deployed API
-        echo "Testing deployed API..."
+        # Test the API
+        echo "Testing API..."
         for i in {1..3}; do
-          echo "Using API key: ${api_key_value}"
+          echo "Attempt $i - Using API key: ${api_key_value}"
           response=$(curl -s -w "\n%{http_code}" \
             -H "x-api-key: ${api_key_value}" \
             "https://${api_id}.execute-api.${AWS_DEFAULT_REGION}.amazonaws.com/prod/health")
@@ -304,7 +264,7 @@ jobs:
           status_code=$(echo "$response" | tail -n1)
           response_body=$(echo "$response" | head -n-1)
           
-          echo "Attempt $i - Status code: $status_code"
+          echo "Status code: $status_code"
           echo "Response body: $response_body"
           
           if [ "$status_code" == "200" ]; then
@@ -317,8 +277,8 @@ jobs:
             exit 1
           fi
           
-          echo "Retrying in 5 seconds..."
-          sleep 5
+          echo "Retrying in 10 seconds..."
+          sleep 10
         done
 
         # Output final results
