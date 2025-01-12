@@ -151,12 +151,17 @@ jobs:
           aws lambda update-function-code \
             --function-name $function_name \
             --zip-file fileb://deployment.zip
+          
+          # Update handler
+          aws lambda update-function-configuration \
+            --function-name $function_name \
+            --handler src.api.lambda_handler.lambda_handler
         else
           echo "Creating new Lambda function..."
           aws lambda create-function \
             --function-name $function_name \
             --runtime python3.9 \
-            --handler src.api.lambda_handler.handler \
+            --handler src.api.lambda_handler.lambda_handler \
             --role "arn:aws:iam::$AWS_ACCOUNT_ID:role/lambda-role" \
             --timeout 30 \
             --memory-size 256 \
