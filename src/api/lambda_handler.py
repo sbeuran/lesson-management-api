@@ -48,7 +48,23 @@ def lambda_handler(event, context):
                     "timestamp": datetime.utcnow().isoformat()
                 }),
                 "headers": {
-                    "Content-Type": "application/json"
+                    "Content-Type": "application/json",
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Methods": "GET,OPTIONS",
+                    "Access-Control-Allow-Headers": "Content-Type,X-Api-Key"
+                }
+            }
+
+        # Handle OPTIONS request
+        if event.get('httpMethod') == 'OPTIONS':
+            return {
+                "statusCode": 200,
+                "body": "{}",
+                "headers": {
+                    "Content-Type": "application/json",
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+                    "Access-Control-Allow-Headers": "Content-Type,X-Api-Key"
                 }
             }
 
@@ -56,13 +72,26 @@ def lambda_handler(event, context):
         try:
             response = handler(event, context)
             logger.info(f"Handler response: {json.dumps(response)}")
+            
+            # Ensure CORS headers are present
+            if isinstance(response, dict) and 'headers' in response:
+                response['headers'].update({
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+                    "Access-Control-Allow-Headers": "Content-Type,X-Api-Key"
+                })
             return response
         except Exception as e:
             logger.error(f"Handler error: {str(e)}")
             return {
                 "statusCode": 500,
                 "body": json.dumps({"error": str(e)}),
-                "headers": {"Content-Type": "application/json"}
+                "headers": {
+                    "Content-Type": "application/json",
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+                    "Access-Control-Allow-Headers": "Content-Type,X-Api-Key"
+                }
             }
 
     except Exception as e:
@@ -70,5 +99,10 @@ def lambda_handler(event, context):
         return {
             "statusCode": 500,
             "body": json.dumps({"error": str(e)}),
-            "headers": {"Content-Type": "application/json"}
+            "headers": {
+                "Content-Type": "application/json",
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+                "Access-Control-Allow-Headers": "Content-Type,X-Api-Key"
+            }
         } 

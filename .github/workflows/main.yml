@@ -235,72 +235,79 @@ jobs:
             --integration-http-method POST \
             --uri "arn:aws:apigateway:${AWS_DEFAULT_REGION}:lambda:path/2015-03-31/functions/arn:aws:lambda:${AWS_DEFAULT_REGION}:${AWS_ACCOUNT_ID}:function:${function_name}/invocations"
 
-          # Add method response
+          # Set up OPTIONS method
+          aws apigateway put-method \
+            --rest-api-id "${api_id}" \
+            --resource-id "${health_resource_id}" \
+            --http-method OPTIONS \
+            --authorization-type NONE \
+            --no-api-key-required
+
+          aws apigateway put-integration \
+            --rest-api-id "${api_id}" \
+            --resource-id "${health_resource_id}" \
+            --http-method OPTIONS \
+            --type MOCK \
+            --request-templates '{"application/json":"{\"statusCode\":200}"}'
+
           aws apigateway put-method-response \
             --rest-api-id "${api_id}" \
             --resource-id "${health_resource_id}" \
-            --http-method GET \
+            --http-method OPTIONS \
             --status-code 200 \
-            --response-models '{"application/json": "Empty"}' \
-            --response-parameters '{"method.response.header.Access-Control-Allow-Origin":false}'
+            --response-parameters "{
+              \"method.response.header.Access-Control-Allow-Headers\":true,
+              \"method.response.header.Access-Control-Allow-Methods\":true,
+              \"method.response.header.Access-Control-Allow-Origin\":true
+            }"
 
-          # Add integration response
           aws apigateway put-integration-response \
             --rest-api-id "${api_id}" \
             --resource-id "${health_resource_id}" \
-            --http-method GET \
+            --http-method OPTIONS \
             --status-code 200 \
-            --selection-pattern "" \
-            --response-parameters '{"method.response.header.Access-Control-Allow-Origin":"'"'*'"'"}'
+            --response-parameters "{
+              \"method.response.header.Access-Control-Allow-Headers\":\"'Content-Type,X-Api-Key'\",
+              \"method.response.header.Access-Control-Allow-Methods\":\"'GET,OPTIONS'\",
+              \"method.response.header.Access-Control-Allow-Origin\":\"'*'\"
+            }"
         fi
 
-        # Create API key if it doesn't exist
+        # Create API key
         echo "Creating API key..."
-        api_key_id=$(aws apigateway get-api-keys --name-query "lesson-completion-api-key" --include-values --query "items[0].id" --output text || true)
-        
-        if [ -z "$api_key_id" ] || [ "$api_key_id" == "None" ]; then
-          api_key_response=$(aws apigateway create-api-key \
-            --name "lesson-completion-api-key" \
-            --enabled \
-            --generate-distinct-id)
-          api_key_id=$(echo "$api_key_response" | jq -r '.id')
-          api_key_value=$(echo "$api_key_response" | jq -r '.value')
-        else
-          api_key_value=$(aws apigateway get-api-key --api-key "$api_key_id" --include-value --query "value" --output text)
-        fi
+        api_key_response=$(aws apigateway create-api-key \
+          --name "lesson-completion-api-key" \
+          --enabled \
+          --generate-distinct-id)
 
-        # Create usage plan if it doesn't exist
+        api_key_id=$(echo "$api_key_response" | jq -r '.id')
+        api_key_value=$(echo "$api_key_response" | jq -r '.value')
+
+        # Create usage plan
         echo "Creating usage plan..."
-        usage_plan_id=$(aws apigateway get-usage-plans --query "items[?name=='lesson-completion-api-plan'].id" --output text || true)
-        
-        if [ -z "$usage_plan_id" ] || [ "$usage_plan_id" == "None" ]; then
-          usage_plan_response=$(aws apigateway create-usage-plan \
-            --name "lesson-completion-api-plan" \
-            --description "Usage plan for lesson completion API" \
-            --api-stages "[{\"apiId\": \"${api_id}\", \"stage\": \"prod\"}]")
-          usage_plan_id=$(echo "$usage_plan_response" | jq -r '.id')
-        fi
+        usage_plan_response=$(aws apigateway create-usage-plan \
+          --name "lesson-completion-api-plan" \
+          --description "Usage plan for lesson completion API" \
+          --api-stages "[{\"apiId\": \"${api_id}\", \"stage\": \"prod\"}]")
+
+        usage_plan_id=$(echo "$usage_plan_response" | jq -r '.id')
 
         # Associate API key with usage plan
         echo "Associating API key with usage plan..."
-        aws apigateway get-usage-plan-key \
-          --usage-plan-id "${usage_plan_id}" \
-          --key-id "${api_key_id}" \
-          --key-type "API_KEY" || \
         aws apigateway create-usage-plan-key \
           --usage-plan-id "${usage_plan_id}" \
           --key-id "${api_key_id}" \
-          --key-type "API_KEY"
+          --key-type "API_KEY" || true
 
-        # Create new deployment
-        echo "Creating new deployment..."
+        # Create deployment
+        echo "Creating deployment..."
         aws apigateway create-deployment \
           --rest-api-id "${api_id}" \
           --stage-name "prod" \
           --description "Production deployment"
 
-        # Wait for deployment to complete
-        echo "Waiting for deployment to complete..."
+        # Wait for deployment
+        echo "Waiting for deployment..."
         sleep 30
 
         # Test the deployed API
