@@ -1,96 +1,52 @@
 from fastapi import FastAPI, HTTPException
-from typing import List, Optional
 from ..models.lesson import LessonCompletion
-import boto3
-from botocore.exceptions import ClientError
-import logging
-import json
+from ..services.dynamodb import DynamoDBService
 from datetime import datetime
 import uuid
-import os
-
-# Set up logging
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
 
 app = FastAPI()
-
-# Configure DynamoDB based on environment
-def get_dynamodb_client():
-    if os.getenv('TESTING') == 'true':
-        return boto3.resource(
-            'dynamodb',
-            region_name='eu-west-1',
-            aws_access_key_id='testing',
-            aws_secret_access_key='testing'
-        )
-    return boto3.resource('dynamodb')
-
-# Initialize DynamoDB table
-table = None
-
-def get_table():
-    global table
-    if table is None:
-        table = get_dynamodb_client().Table('lesson_completions')
-    return table
+dynamodb = DynamoDBService()
 
 @app.get("/health")
 async def health_check():
-    try:
-        # Test DynamoDB connection
-        get_table().scan(Limit=1)
-        return {"status": "healthy", "message": "API and database are operational"}
-    except Exception as e:
-        logger.error(f"Health check failed: {str(e)}")
-        raise HTTPException(status_code=500, detail="Health check failed")
+    return {
+        "status": "healthy",
+        "message": "API and database are operational"
+    }
 
-@app.get("/lessons/completion")
-async def list_completions() -> List[dict]:
+@app.post("/lessons/complete")
+async def complete_lesson(completion: LessonCompletion):
     try:
-        logger.info("Scanning DynamoDB table")
-        response = get_table().scan()
-        items = response.get('Items', [])
-        logger.info(f"Found {len(items)} items")
-        return items
-    except ClientError as e:
-        logger.error(f"DynamoDB error: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-    except Exception as e:
-        logger.error(f"Unexpected error: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/lessons/completion/{student_id}")
-async def get_student_completions(student_id: str) -> List[dict]:
-    try:
-        logger.info(f"Querying completions for student: {student_id}")
-        response = get_table().query(
-            KeyConditionExpression='student_id = :sid',
-            ExpressionAttributeValues={':sid': student_id}
-        )
-        items = response.get('Items', [])
-        logger.info(f"Found {len(items)} items")
-        return items
-    except ClientError as e:
-        logger.error(f"DynamoDB error: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-    except Exception as e:
-        logger.error(f"Unexpected error: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/lessons/completion")
-async def create_completion(completion: LessonCompletion) -> dict:
-    try:
-        item = completion.model_dump()
-        item['id'] = str(uuid.uuid4())
+        # Generate unique ID for the completion
+        completion_id = str(uuid.uuid4())
         
-        logger.info(f"Creating completion: {json.dumps(item)}")
-        get_table().put_item(Item=item)
+        # Create item for DynamoDB
+        item = {
+            'id': completion_id,
+            'student_id': completion.student_id,
+            'lesson_id': completion.lesson_id,
+            'completed_at': completion.completed_at.isoformat(),
+            'created_at': datetime.utcnow().isoformat()
+        }
         
-        return {"message": "Completion created", "id": item['id']}
-    except ClientError as e:
-        logger.error(f"DynamoDB error: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        # Save to DynamoDB
+        dynamodb.put_item(item)
+        
+        return {
+            "message": "Lesson completion recorded",
+            "completion_id": completion_id
+        }
     except Exception as e:
-        logger.error(f"Unexpected error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/lessons/completions/{student_id}")
+async def get_student_completions(student_id: str):
+    try:
+        # Query DynamoDB for student's completions
+        completions = dynamodb.query_items(student_id)
+        return {
+            "student_id": student_id,
+            "completions": completions
+        }
+    except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) 
