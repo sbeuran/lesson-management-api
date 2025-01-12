@@ -25,30 +25,31 @@ def aws_credentials():
     os.environ['TESTING'] = 'true'
 
 @pytest.fixture(autouse=True)
-def dynamodb_table(aws_credentials):
+@mock_dynamodb
+def dynamodb_table():
     """Create a DynamoDB table for testing."""
-    with mock_dynamodb():
-        logger.info("Creating test DynamoDB table")
-        dynamodb = boto3.resource('dynamodb', endpoint_url='http://localhost:5000')
-        table = dynamodb.create_table(
-            TableName='lesson_completions',
-            KeySchema=[
-                {'AttributeName': 'student_id', 'KeyType': 'HASH'},
-                {'AttributeName': 'id', 'KeyType': 'RANGE'}
-            ],
-            AttributeDefinitions=[
-                {'AttributeName': 'student_id', 'AttributeType': 'S'},
-                {'AttributeName': 'id', 'AttributeType': 'S'}
-            ],
-            ProvisionedThroughput={
-                'ReadCapacityUnits': 5,
-                'WriteCapacityUnits': 5
-            }
-        )
-        table.meta.client.get_waiter('table_exists').wait(TableName='lesson_completions')
-        logger.info("Test DynamoDB table created")
-        yield table
+    logger.info("Creating test DynamoDB table")
+    dynamodb = boto3.resource('dynamodb')
+    table = dynamodb.create_table(
+        TableName='lesson_completions',
+        KeySchema=[
+            {'AttributeName': 'student_id', 'KeyType': 'HASH'},
+            {'AttributeName': 'id', 'KeyType': 'RANGE'}
+        ],
+        AttributeDefinitions=[
+            {'AttributeName': 'student_id', 'AttributeType': 'S'},
+            {'AttributeName': 'id', 'AttributeType': 'S'}
+        ],
+        ProvisionedThroughput={
+            'ReadCapacityUnits': 5,
+            'WriteCapacityUnits': 5
+        }
+    )
+    table.meta.client.get_waiter('table_exists').wait(TableName='lesson_completions')
+    logger.info("Test DynamoDB table created")
+    return table
 
+@mock_dynamodb
 def test_health_check(dynamodb_table):
     response = client.get("/health")
     assert response.status_code == 200
@@ -57,6 +58,7 @@ def test_health_check(dynamodb_table):
         "message": "API and database are operational"
     }
 
+@mock_dynamodb
 def test_complete_lesson(dynamodb_table):
     completion_data = {
         "student_id": "test123",
@@ -69,6 +71,7 @@ def test_complete_lesson(dynamodb_table):
     assert "completion_id" in response.json()
     assert response.json()["message"] == "Lesson completion recorded"
 
+@mock_dynamodb
 def test_complete_lesson_invalid_data(dynamodb_table):
     # Missing required fields
     completion_data = {
@@ -79,6 +82,7 @@ def test_complete_lesson_invalid_data(dynamodb_table):
     assert response.status_code == 422  # Validation error
     assert "detail" in response.json()
 
+@mock_dynamodb
 def test_get_student_completions(dynamodb_table):
     # First create a completion
     completion_data = {

@@ -11,10 +11,7 @@ class DynamoDBService:
     def __init__(self):
         if os.getenv('TESTING') == 'true':
             logger.info("Initializing DynamoDB in test mode")
-            self.dynamodb = boto3.resource(
-                'dynamodb',
-                endpoint_url='http://localhost:5000'
-            )
+            self.dynamodb = boto3.resource('dynamodb')
         else:
             logger.info("Initializing DynamoDB in production mode")
             self.dynamodb = boto3.resource('dynamodb')
