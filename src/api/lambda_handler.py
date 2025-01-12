@@ -17,7 +17,7 @@ def lambda_handler(event, context):
         logger.info(f"Received event: {json.dumps(event)}")
 
         # Handle health check
-        if event.get('path') == '/health' or event.get('requestContext', {}).get('path') == '/health':
+        if '/health' in event.get('path', '') or '/health' in event.get('resource', ''):
             return {
                 "statusCode": 200,
                 "headers": {
@@ -30,7 +30,21 @@ def lambda_handler(event, context):
             }
 
         # Process request through Mangum
-        return handler(event, context)
+        try:
+            response = handler(event, context)
+            logger.info(f"Handler response: {json.dumps(response)}")
+            return response
+        except Exception as e:
+            logger.error(f"Handler error: {str(e)}")
+            return {
+                "statusCode": 500,
+                "headers": {
+                    "Content-Type": "application/json"
+                },
+                "body": json.dumps({
+                    "error": str(e)
+                })
+            }
 
     except Exception as e:
         logger.error(f"Lambda error: {str(e)}")

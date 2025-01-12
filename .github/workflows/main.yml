@@ -203,6 +203,15 @@ jobs:
           --query 'id' \
           --output text)
 
+        # Add Lambda permission for API Gateway
+        echo "Adding Lambda permission..."
+        aws lambda add-permission \
+          --function-name "$function_name" \
+          --statement-id "apigateway-access" \
+          --action lambda:InvokeFunction \
+          --principal apigateway.amazonaws.com \
+          --source-arn "arn:aws:execute-api:${AWS_DEFAULT_REGION}:${AWS_ACCOUNT_ID}:${api_id}/*/*/health"
+
         echo "Creating GET method..."
         aws apigateway put-method \
           --rest-api-id "$api_id" \
@@ -232,19 +241,16 @@ jobs:
         echo "Creating usage plan..."
         usage_plan_response=$(aws apigateway create-usage-plan \
           --name "lesson-completion-api-plan" \
-          --description "Usage plan for lesson completion API")
+          --description "Usage plan for lesson completion API" \
+          --api-stages "[{\"apiId\": \"${api_id}\", \"stage\": \"prod\"}]")
         
         usage_plan_id=$(echo "$usage_plan_response" | jq -r '.id')
 
         echo "Creating stage..."
         aws apigateway create-deployment \
           --rest-api-id "$api_id" \
-          --stage-name "prod"
-
-        echo "Updating usage plan with stage..."
-        aws apigateway update-usage-plan \
-          --usage-plan-id "$usage_plan_id" \
-          --patch-operations op=add,path=/apiStages,value="${api_id}:prod"
+          --stage-name "prod" \
+          --description "Production deployment"
 
         echo "Associating API key with usage plan..."
         aws apigateway create-usage-plan-key \
@@ -253,7 +259,7 @@ jobs:
           --key-type "API_KEY"
 
         echo "Waiting for deployment..."
-        sleep 30
+        sleep 45
 
         echo "Testing API..."
         for i in {1..3}; do
