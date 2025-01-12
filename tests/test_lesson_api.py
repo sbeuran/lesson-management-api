@@ -1,49 +1,55 @@
 from fastapi.testclient import TestClient
-from datetime import datetime
-from src.api.routes import app
-from src.models.lesson import CompletionStatus
-from decimal import Decimal
-import os
+from datetime import datetime, timezone
 import pytest
-
-# Set testing environment
-os.environ['TESTING'] = 'true'
+from src.api.routes import app
+from src.models.lesson import LessonCompletion
 
 client = TestClient(app)
 
-def test_health_check(dynamodb):
+def test_health_check():
     response = client.get("/health")
     assert response.status_code == 200
-    assert response.json() == {"status": "healthy", "message": "API and database are operational"}
+    assert response.json() == {
+        "status": "healthy",
+        "message": "API and database are operational"
+    }
 
-def test_record_completion(dynamodb):
+def test_complete_lesson():
     completion_data = {
         "student_id": "test123",
         "lesson_id": "lesson456",
-        "completion_date": datetime.now().isoformat(),
-        "score": str(Decimal('95.5')),
-        "duration_minutes": 45,
-        "status": CompletionStatus.COMPLETED.value
+        "completed_at": datetime.now(timezone.utc).isoformat()
     }
     
-    response = client.post("/lessons/completion", json=completion_data)
+    response = client.post("/lessons/complete", json=completion_data)
     assert response.status_code == 200
-    assert "id" in response.json()
+    assert "completion_id" in response.json()
+    assert response.json()["message"] == "Lesson completion recorded"
 
-def test_get_student_completions(dynamodb):
+def test_complete_lesson_invalid_data():
+    # Missing required fields
+    completion_data = {
+        "student_id": "test123"
+    }
+    
+    response = client.post("/lessons/complete", json=completion_data)
+    assert response.status_code == 422  # Validation error
+    assert "detail" in response.json()
+
+def test_get_student_completions():
     # First create a completion
     completion_data = {
         "student_id": "test123",
         "lesson_id": "lesson456",
-        "completion_date": datetime.now().isoformat(),
-        "score": str(Decimal('95.5')),
-        "duration_minutes": 45,
-        "status": CompletionStatus.COMPLETED.value
+        "completed_at": datetime.now(timezone.utc).isoformat()
     }
-    client.post("/lessons/completion", json=completion_data)
+    client.post("/lessons/complete", json=completion_data)
     
-    # Then get the completions
-    response = client.get(f"/lessons/completion/{completion_data['student_id']}")
+    # Then get completions
+    response = client.get("/lessons/completions/test123")
     assert response.status_code == 200
-    assert isinstance(response.json(), list)
-    assert len(response.json()) > 0 
+    assert "completions" in response.json()
+    completions = response.json()["completions"]
+    assert len(completions) > 0
+    assert completions[0]["student_id"] == "test123"
+    assert completions[0]["lesson_id"] == "lesson456" 
