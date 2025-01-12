@@ -205,9 +205,14 @@ jobs:
 
         # Add Lambda permission for API Gateway
         echo "Adding Lambda permission..."
+        timestamp=$(date +%s)
+        aws lambda remove-permission \
+          --function-name "$function_name" \
+          --statement-id "apigateway-access" || true
+        
         aws lambda add-permission \
           --function-name "$function_name" \
-          --statement-id "apigateway-access" \
+          --statement-id "apigateway-access-${timestamp}" \
           --action lambda:InvokeFunction \
           --principal apigateway.amazonaws.com \
           --source-arn "arn:aws:execute-api:${AWS_DEFAULT_REGION}:${AWS_ACCOUNT_ID}:${api_id}/*/*/health"
