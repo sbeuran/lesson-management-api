@@ -10,7 +10,19 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 app = FastAPI()
+
+# Initialize DynamoDB service
 dynamodb = DynamoDBService()
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize services on startup."""
+    if not hasattr(app.state, 'dynamodb'):
+        app.state.dynamodb = dynamodb
+
+def get_dynamodb():
+    """Get the DynamoDB service instance."""
+    return app.state.dynamodb
 
 @app.get("/health")
 async def health_check():
@@ -36,8 +48,8 @@ async def complete_lesson(completion: LessonCompletion):
         
         logger.info(f"Saving completion: {item}")
         
-        # Save to DynamoDB
-        dynamodb.put_item(item)
+        # Save to DynamoDB using the shared service
+        get_dynamodb().put_item(item)
         
         return {
             "message": "Lesson completion recorded",
@@ -51,8 +63,8 @@ async def complete_lesson(completion: LessonCompletion):
 async def get_student_completions(student_id: str):
     try:
         logger.info(f"Getting completions for student: {student_id}")
-        # Query DynamoDB for student's completions
-        completions = dynamodb.query_items(student_id)
+        # Query DynamoDB using the shared service
+        completions = get_dynamodb().query_items(student_id)
         return {
             "student_id": student_id,
             "completions": completions
