@@ -209,7 +209,7 @@ jobs:
           --resource-id "$health_resource_id" \
           --http-method GET \
           --authorization-type "NONE" \
-          --api-key-required=true
+          --api-key-required
 
         echo "Creating integration..."
         aws apigateway put-integration \
@@ -219,31 +219,6 @@ jobs:
           --type AWS_PROXY \
           --integration-http-method POST \
           --uri "arn:aws:apigateway:${AWS_DEFAULT_REGION}:lambda:path/2015-03-31/functions/arn:aws:lambda:${AWS_DEFAULT_REGION}:${AWS_ACCOUNT_ID}:function:${function_name}/invocations"
-
-        echo "Creating method response..."
-        aws apigateway put-method-response \
-          --rest-api-id "$api_id" \
-          --resource-id "$health_resource_id" \
-          --http-method GET \
-          --status-code 200 \
-          --response-models application/json=Empty
-
-        echo "Creating integration response..."
-        aws apigateway put-integration-response \
-          --rest-api-id "$api_id" \
-          --resource-id "$health_resource_id" \
-          --http-method GET \
-          --status-code 200 \
-          --selection-pattern ""
-
-        echo "Adding Lambda permission..."
-        timestamp=$(date +%s)
-        aws lambda add-permission \
-          --function-name "$function_name" \
-          --statement-id "apigateway-health-${timestamp}" \
-          --action lambda:InvokeFunction \
-          --principal apigateway.amazonaws.com \
-          --source-arn "arn:aws:execute-api:${AWS_DEFAULT_REGION}:${AWS_ACCOUNT_ID}:${api_id}/*/GET/health"
 
         echo "Creating API key..."
         api_key_response=$(aws apigateway create-api-key \
