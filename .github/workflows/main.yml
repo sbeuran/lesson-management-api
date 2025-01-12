@@ -229,6 +229,26 @@ jobs:
           --integration-http-method POST \
           --uri "arn:aws:apigateway:${AWS_DEFAULT_REGION}:lambda:path/2015-03-31/functions/arn:aws:lambda:${AWS_DEFAULT_REGION}:${AWS_ACCOUNT_ID}:function:${function_name}/invocations"
 
+        # Create stage first
+        echo "Creating stage and deployment..."
+        aws apigateway create-deployment \
+          --rest-api-id "$api_id" \
+          --stage-name "prod" \
+          --description "Production deployment"
+
+        # Wait for stage to be ready
+        echo "Waiting for stage deployment..."
+        sleep 30
+
+        # Now create usage plan with the existing stage
+        echo "Creating usage plan..."
+        usage_plan_response=$(aws apigateway create-usage-plan \
+          --name "lesson-completion-api-plan" \
+          --description "Usage plan for lesson completion API" \
+          --api-stages "[{\"apiId\": \"${api_id}\", \"stage\": \"prod\"}]")
+        
+        usage_plan_id=$(echo "$usage_plan_response" | jq -r '.id')
+
         echo "Creating API key..."
         api_key_response=$(aws apigateway create-api-key \
           --name "lesson-completion-api-key" \
@@ -238,26 +258,13 @@ jobs:
         api_key_id=$(echo "$api_key_response" | jq -r '.id')
         api_key_value=$(echo "$api_key_response" | jq -r '.value')
 
-        echo "Creating usage plan..."
-        usage_plan_response=$(aws apigateway create-usage-plan \
-          --name "lesson-completion-api-plan" \
-          --description "Usage plan for lesson completion API" \
-          --api-stages "[{\"apiId\": \"${api_id}\", \"stage\": \"prod\"}]")
-        
-        usage_plan_id=$(echo "$usage_plan_response" | jq -r '.id')
-
-        echo "Creating stage..."
-        aws apigateway create-deployment \
-          --rest-api-id "$api_id" \
-          --stage-name "prod" \
-          --description "Production deployment"
-
         echo "Associating API key with usage plan..."
         aws apigateway create-usage-plan-key \
           --usage-plan-id "$usage_plan_id" \
           --key-id "$api_key_id" \
           --key-type "API_KEY"
 
+        # Wait for everything to be ready
         echo "Waiting for deployment..."
         sleep 45
 
