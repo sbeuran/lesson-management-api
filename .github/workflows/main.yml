@@ -171,8 +171,8 @@ jobs:
         api_name="lesson-completion-api"
         
         # Delete existing API if it exists
-        existing_api_id=$(aws apigateway get-rest-apis --query "items[?name=='${api_name}'].id" --output text)
-        if [ ! -z "$existing_api_id" ]; then
+        existing_api_id=$(aws apigateway get-rest-apis --query "items[?name=='${api_name}'].id" --output text || echo "")
+        if [ ! -z "$existing_api_id" ] && [ "$existing_api_id" != "None" ]; then
           echo "Deleting existing API..."
           aws apigateway delete-rest-api --rest-api-id "${existing_api_id}"
           sleep 30  # Wait for deletion to complete
@@ -218,6 +218,15 @@ jobs:
           --integration-http-method POST \
           --uri "arn:aws:apigateway:${AWS_DEFAULT_REGION}:lambda:path/2015-03-31/functions/arn:aws:lambda:${AWS_DEFAULT_REGION}:${AWS_ACCOUNT_ID}:function:${function_name}/invocations"
 
+        # Add Lambda permission
+        timestamp=$(date +%s)
+        aws lambda add-permission \
+          --function-name $function_name \
+          --statement-id "apigateway-health-${timestamp}" \
+          --action lambda:InvokeFunction \
+          --principal apigateway.amazonaws.com \
+          --source-arn "arn:aws:execute-api:${AWS_DEFAULT_REGION}:${AWS_ACCOUNT_ID}:${api_id}/*/GET/health"
+
         # Create API key
         echo "Creating API key..."
         api_key_response=$(aws apigateway create-api-key \
@@ -247,16 +256,18 @@ jobs:
         echo "Creating deployment..."
         aws apigateway create-deployment \
           --rest-api-id "${api_id}" \
-          --stage-name "prod"
+          --stage-name "prod" \
+          --stage-description "Production Stage" \
+          --description "Production Deployment"
 
         # Wait for deployment
         echo "Waiting for deployment..."
-        sleep 60
+        sleep 30
 
         # Test the API
         echo "Testing API..."
         for i in {1..3}; do
-          echo "Attempt $i - Using API key: ${api_key_value}"
+          echo "Attempt $i..."
           response=$(curl -s -w "\n%{http_code}" \
             -H "x-api-key: ${api_key_value}" \
             "https://${api_id}.execute-api.${AWS_DEFAULT_REGION}.amazonaws.com/prod/health")

@@ -2,7 +2,6 @@ from mangum import Mangum
 from .routes import app
 import json
 import logging
-from decimal import Decimal
 from datetime import datetime
 
 # Set up logging
@@ -18,7 +17,7 @@ def lambda_handler(event, context):
         logger.info(f"Received event: {json.dumps(event)}")
 
         # Handle health check
-        if event.get('path') == '/health':
+        if event.get('path') == '/health' or event.get('rawPath') == '/health':
             return {
                 "statusCode": 200,
                 "body": json.dumps({
