@@ -380,5 +380,63 @@ jobs:
           --action lambda:InvokeFunction \
           --principal apigateway.amazonaws.com \
           --source-arn "arn:aws:execute-api:${AWS_DEFAULT_REGION}:${AWS_ACCOUNT_ID}:${api_id}/*/*/lessons/complete"
+
+        # Create completions resource
+        echo "Creating completions resource..."
+        completions_resource_id=$(aws apigateway create-resource \
+          --rest-api-id "$api_id" \
+          --parent-id "$lessons_resource_id" \
+          --path-part "completions" \
+          --query 'id' \
+          --output text)
+
+        # Create student_id resource
+        echo "Creating student_id resource..."
+        student_id_resource_id=$(aws apigateway create-resource \
+          --rest-api-id "$api_id" \
+          --parent-id "$completions_resource_id" \
+          --path-part "{student_id}" \
+          --query 'id' \
+          --output text)
+
+        # Create GET method for student completions endpoint
+        echo "Creating GET method for student completions endpoint..."
+        aws apigateway put-method \
+          --rest-api-id "$api_id" \
+          --resource-id "$student_id_resource_id" \
+          --http-method GET \
+          --authorization-type "NONE" \
+          --api-key-required \
+          --request-parameters "method.request.path.student_id=true"
+
+        # Create integration for student completions endpoint
+        echo "Creating integration for student completions endpoint..."
+        aws apigateway put-integration \
+          --rest-api-id "$api_id" \
+          --resource-id "$student_id_resource_id" \
+          --http-method GET \
+          --type AWS_PROXY \
+          --integration-http-method POST \
+          --uri "arn:aws:apigateway:${AWS_DEFAULT_REGION}:lambda:path/2015-03-31/functions/arn:aws:lambda:${AWS_DEFAULT_REGION}:${AWS_ACCOUNT_ID}:function:${function_name}/invocations"
+
+        # Add Lambda permission for student completions endpoint
+        echo "Adding Lambda permission for student completions endpoint..."
+        timestamp=$(date +%s)
+        aws lambda add-permission \
+          --function-name "$function_name" \
+          --statement-id "apigateway-completions-${timestamp}" \
+          --action lambda:InvokeFunction \
+          --principal apigateway.amazonaws.com \
+          --source-arn "arn:aws:execute-api:${AWS_DEFAULT_REGION}:${AWS_ACCOUNT_ID}:${api_id}/*/*/lessons/completions/*"
+
+        # Create new deployment
+        echo "Creating new deployment..."
+        aws apigateway create-deployment \
+          --rest-api-id "$api_id" \
+          --stage-name "prod" \
+          --description "Added lesson completion endpoints"
+
+        echo "Waiting for deployment..."
+        sleep 30
         
   
