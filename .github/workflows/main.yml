@@ -73,10 +73,23 @@ jobs:
         
     - name: Create deployment package
       run: |
+        # Create a clean deployment directory
+        rm -rf package
         mkdir -p package
-        cp -r src/* package/
+        
+        # Copy only the necessary files
+        cp -r src package/
         cp requirements.txt package/
+        
+        # Install dependencies into the package directory
         cd package
+        pip install -r requirements.txt -t .
+        
+        # Remove unnecessary files
+        find . -type d -name "__pycache__" -exec rm -rf {} +
+        find . -type f -name "*.pyc" -delete
+        
+        # Create deployment zip
         zip -r ../deployment.zip ./*
         
     - name: Deploy to AWS
@@ -158,24 +171,13 @@ jobs:
           
           # Update handler with retries
           echo "Updating function configuration..."
-          max_retries=5
-          retry_count=0
-          while [ $retry_count -lt $max_retries ]; do
-            if aws lambda update-function-configuration \
-              --function-name $function_name \
-              --handler src.api.lambda_handler.lambda_handler; then
-              break
-            else
-              retry_count=$((retry_count + 1))
-              if [ $retry_count -eq $max_retries ]; then
-                echo "Failed to update function configuration after $max_retries attempts"
-                exit 1
-              fi
-              echo "Retrying function configuration update in 10 seconds... (Attempt $retry_count of $max_retries)"
-              sleep 10
-            fi
-          done
-          
+          aws lambda update-function-configuration \
+            --function-name $function_name \
+            --handler src.api.lambda_handler.handler \
+            --runtime python3.9 \
+            --timeout 30 \
+            --memory-size 256
+            
           # Wait for configuration update to complete
           echo "Waiting for function configuration update to complete..."
           aws lambda wait function-updated --function-name $function_name
@@ -184,7 +186,7 @@ jobs:
           aws lambda create-function \
             --function-name $function_name \
             --runtime python3.9 \
-            --handler src.api.lambda_handler.lambda_handler \
+            --handler src.api.lambda_handler.handler \
             --role "arn:aws:iam::$AWS_ACCOUNT_ID:role/lambda-role" \
             --timeout 30 \
             --memory-size 256 \
