@@ -17,9 +17,12 @@ def lambda_handler(event, context):
         logger.info(f"Received event: {json.dumps(event)}")
 
         # Handle health check
-        if '/health' in event.get('path', ''):
+        if event.get('path') == '/health' or event.get('requestContext', {}).get('path') == '/health':
             return {
                 "statusCode": 200,
+                "headers": {
+                    "Content-Type": "application/json"
+                },
                 "body": json.dumps({
                     "status": "healthy",
                     "timestamp": datetime.utcnow().isoformat()
@@ -33,5 +36,10 @@ def lambda_handler(event, context):
         logger.error(f"Lambda error: {str(e)}")
         return {
             "statusCode": 500,
-            "body": json.dumps({"error": str(e)})
+            "headers": {
+                "Content-Type": "application/json"
+            },
+            "body": json.dumps({
+                "error": str(e)
+            })
         } 

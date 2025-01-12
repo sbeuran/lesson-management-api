@@ -209,7 +209,7 @@ jobs:
           --resource-id "$health_resource_id" \
           --http-method GET \
           --authorization-type "NONE" \
-          --api-key-required true
+          --api-key-required=true
 
         echo "Creating integration..."
         aws apigateway put-integration \
@@ -218,7 +218,23 @@ jobs:
           --http-method GET \
           --type AWS_PROXY \
           --integration-http-method POST \
-          --uri "arn:aws:apigateway:${AWS_DEFAULT_REGION}:lambda:path/2015-03-31/functions/${function_name}/invocations"
+          --uri "arn:aws:apigateway:${AWS_DEFAULT_REGION}:lambda:path/2015-03-31/functions/arn:aws:lambda:${AWS_DEFAULT_REGION}:${AWS_ACCOUNT_ID}:function:${function_name}/invocations"
+
+        echo "Creating method response..."
+        aws apigateway put-method-response \
+          --rest-api-id "$api_id" \
+          --resource-id "$health_resource_id" \
+          --http-method GET \
+          --status-code 200 \
+          --response-models application/json=Empty
+
+        echo "Creating integration response..."
+        aws apigateway put-integration-response \
+          --rest-api-id "$api_id" \
+          --resource-id "$health_resource_id" \
+          --http-method GET \
+          --status-code 200 \
+          --selection-pattern ""
 
         echo "Adding Lambda permission..."
         timestamp=$(date +%s)
