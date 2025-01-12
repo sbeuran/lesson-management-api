@@ -1,6 +1,6 @@
 {
   "info": {
-    "name": "Lesson Completion API",
+    "name": "lesson-completion-api",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -20,10 +20,11 @@
           "host": ["{{baseUrl}}"],
           "path": ["health"]
         }
-      }
+      },
+      "response": []
     },
     {
-      "name": "Create Completion",
+      "name": "Complete Lesson",
       "request": {
         "method": "POST",
         "header": [
@@ -33,21 +34,22 @@
             "type": "text"
           },
           {
-            "key": "X-Api-Key",
+            "key": "x-api-key",
             "value": "{{apiKey}}",
             "type": "text"
           }
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n    \"student_id\": \"test123\",\n    \"lesson_id\": \"lesson456\",\n    \"completion_date\": \"2024-01-10T18:30:00\",\n    \"score\": \"95.5\",\n    \"duration_minutes\": 45,\n    \"status\": \"completed\"\n}"
+          "raw": "{\n    \"student_id\": \"student123\",\n    \"lesson_id\": \"lesson456\",\n    \"completed_at\": \"2024-01-12T19:49:00Z\"\n}"
         },
         "url": {
-          "raw": "{{baseUrl}}/lessons/completion",
+          "raw": "{{baseUrl}}/lessons/complete",
           "host": ["{{baseUrl}}"],
-          "path": ["lessons", "completion"]
+          "path": ["lessons", "complete"]
         }
-      }
+      },
+      "response": []
     },
     {
       "name": "Get Student Completions",
@@ -55,31 +57,18 @@
         "method": "GET",
         "header": [
           {
-            "key": "X-Api-Key",
+            "key": "x-api-key",
             "value": "{{apiKey}}",
             "type": "text"
           }
         ],
         "url": {
-          "raw": "{{baseUrl}}/lessons/completion/test123",
+          "raw": "{{baseUrl}}/lessons/completions/student123",
           "host": ["{{baseUrl}}"],
-          "path": ["lessons", "completion", "test123"]
+          "path": ["lessons", "completions", "student123"]
         }
-      }
-    }
-  ],
-  "variable": [
-    {
-      "key": "baseUrl",
-      "value": "https://7k5ak0ymf6.execute-api.eu-west-1.amazonaws.com/prod"
-    },
-    {
-      "key": "studentId",
-      "value": "student001"
-    },
-    {
-      "key": "apiKey",
-      "value": ""
+      },
+      "response": []
     }
   ]
 } 

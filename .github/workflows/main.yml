@@ -334,4 +334,51 @@ jobs:
         echo "API Base URL: https://${api_id}.execute-api.${AWS_DEFAULT_REGION}.amazonaws.com/prod"
         echo "API Key: ${api_key_value}"
         
+        # Create lessons resource
+        echo "Creating lessons resource..."
+        lessons_resource_id=$(aws apigateway create-resource \
+          --rest-api-id "$api_id" \
+          --parent-id "$root_resource_id" \
+          --path-part "lessons" \
+          --query 'id' \
+          --output text)
+
+        # Create complete resource
+        echo "Creating complete resource..."
+        complete_resource_id=$(aws apigateway create-resource \
+          --rest-api-id "$api_id" \
+          --parent-id "$lessons_resource_id" \
+          --path-part "complete" \
+          --query 'id' \
+          --output text)
+
+        # Create POST method for complete endpoint
+        echo "Creating POST method for complete endpoint..."
+        aws apigateway put-method \
+          --rest-api-id "$api_id" \
+          --resource-id "$complete_resource_id" \
+          --http-method POST \
+          --authorization-type "NONE" \
+          --api-key-required
+
+        # Create integration for complete endpoint
+        echo "Creating integration for complete endpoint..."
+        aws apigateway put-integration \
+          --rest-api-id "$api_id" \
+          --resource-id "$complete_resource_id" \
+          --http-method POST \
+          --type AWS_PROXY \
+          --integration-http-method POST \
+          --uri "arn:aws:apigateway:${AWS_DEFAULT_REGION}:lambda:path/2015-03-31/functions/arn:aws:lambda:${AWS_DEFAULT_REGION}:${AWS_ACCOUNT_ID}:function:${function_name}/invocations"
+
+        # Add Lambda permission for complete endpoint
+        echo "Adding Lambda permission for complete endpoint..."
+        timestamp=$(date +%s)
+        aws lambda add-permission \
+          --function-name "$function_name" \
+          --statement-id "apigateway-complete-${timestamp}" \
+          --action lambda:InvokeFunction \
+          --principal apigateway.amazonaws.com \
+          --source-arn "arn:aws:execute-api:${AWS_DEFAULT_REGION}:${AWS_ACCOUNT_ID}:${api_id}/*/*/lessons/complete"
+        
   
