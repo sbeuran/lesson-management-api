@@ -17,7 +17,7 @@ def lambda_handler(event, context):
         logger.info(f"Received event: {json.dumps(event)}")
 
         # Handle health check
-        if event.get('path') == '/health' or event.get('rawPath') == '/health':
+        if '/health' in event.get('path', ''):
             return {
                 "statusCode": 200,
                 "body": json.dumps({
