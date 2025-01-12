@@ -6,6 +6,11 @@ import os
 from moto import mock_dynamodb
 from src.api.routes import app
 from src.models.lesson import LessonCompletion
+import logging
+
+# Set up logging for tests
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 client = TestClient(app)
 
@@ -23,8 +28,8 @@ def aws_credentials():
 def dynamodb_table(aws_credentials):
     """Create a DynamoDB table for testing."""
     with mock_dynamodb():
-        # Create the DynamoDB table
-        dynamodb = boto3.resource('dynamodb')
+        logger.info("Creating test DynamoDB table")
+        dynamodb = boto3.resource('dynamodb', endpoint_url='http://localhost:5000')
         table = dynamodb.create_table(
             TableName='lesson_completions',
             KeySchema=[
@@ -41,6 +46,7 @@ def dynamodb_table(aws_credentials):
             }
         )
         table.meta.client.get_waiter('table_exists').wait(TableName='lesson_completions')
+        logger.info("Test DynamoDB table created")
         yield table
 
 def test_health_check(dynamodb_table):
