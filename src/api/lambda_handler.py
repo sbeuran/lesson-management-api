@@ -39,42 +39,36 @@ def lambda_handler(event, context):
         # Log the incoming event
         logger.info(f"Received event: {json.dumps(event)}")
 
-        # Direct health check response
-        if event.get('rawPath', '') == '/health' or event.get('path', '') == '/health' or event.get('resource', '') == '/health':
-            return format_response(200, {
-                "status": "healthy",
-                "timestamp": datetime.utcnow().isoformat(),
-                "version": "1.0.0"
-            })
-
-        # Handle CORS preflight
-        if event.get("httpMethod") == "OPTIONS" or event.get("requestContext", {}).get("http", {}).get("method") == "OPTIONS":
-            return format_response(200, {"message": "OK"})
+        # Handle health check directly
+        if '/health' in event.get('path', '') or '/health' in event.get('resource', ''):
+            return {
+                "statusCode": 200,
+                "body": json.dumps({
+                    "status": "healthy",
+                    "timestamp": datetime.utcnow().isoformat()
+                }),
+                "headers": {
+                    "Content-Type": "application/json"
+                }
+            }
 
         # Process request through Mangum
         try:
-            # Convert API Gateway v2 event to v1 if needed
-            if "version" in event.get("requestContext", {}) and event["requestContext"]["version"] == "2.0":
-                event = {
-                    "resource": event.get("rawPath"),
-                    "path": event.get("rawPath"),
-                    "httpMethod": event["requestContext"]["http"]["method"],
-                    "headers": event.get("headers", {}),
-                    "queryStringParameters": event.get("queryStringParameters"),
-                    "pathParameters": event.get("pathParameters"),
-                    "body": event.get("body"),
-                    "isBase64Encoded": event.get("isBase64Encoded", False)
-                }
-
             response = handler(event, context)
             logger.info(f"Handler response: {json.dumps(response)}")
             return response
         except Exception as e:
             logger.error(f"Handler error: {str(e)}")
-            logger.error(traceback.format_exc())
-            return format_response(500, {"error": str(e)})
+            return {
+                "statusCode": 500,
+                "body": json.dumps({"error": str(e)}),
+                "headers": {"Content-Type": "application/json"}
+            }
 
     except Exception as e:
         logger.error(f"Lambda error: {str(e)}")
-        logger.error(traceback.format_exc())
-        return format_response(500, {"error": str(e)}) 
+        return {
+            "statusCode": 500,
+            "body": json.dumps({"error": str(e)}),
+            "headers": {"Content-Type": "application/json"}
+        } 
