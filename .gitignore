@@ -6,3 +6,5 @@ __pycache__/
 .venv/
 venv/
 package/
+# Postman environment files (contain secrets)
+*postman_environment.json
