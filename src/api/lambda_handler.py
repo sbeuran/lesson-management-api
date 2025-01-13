@@ -1,5 +1,5 @@
 from mangum import Mangum
-from .routes import app
+from .routes import app, dynamodb
 import json
 import logging
 from datetime import datetime
@@ -7,6 +7,9 @@ from datetime import datetime
 # Set up logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
+
+# Initialize app state
+app.state.dynamodb = dynamodb
 
 # Create Mangum handler for Lambda
 handler = Mangum(app, lifespan="off")
